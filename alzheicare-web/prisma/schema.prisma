@@ -1,7 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
 
 generator client {
   provider = "prisma-client"
@@ -10,4 +6,50 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+enum UserRole {
+  Admin
+  Patient
+  Doctor
+}
+
+model User {
+  id                            Int       @id @default(autoincrement())
+  username                      String    @unique
+  firstName                     String
+  secondName                    String
+  email                         String    @unique
+  password                      String
+  role                          UserRole  @default(Patient)
+  emailVerificationToken        String?
+  emailVerificationExpiresAt    DateTime?
+  isEmailVerified               Boolean   @default(false)
+  createdAt                     DateTime  @default(now())
+  deletedAt                     DateTime?
+  updatedAt                     DateTime  @updatedAt
+
+  liscenceNumber                String?   @unique
+  specialization                String?
+
+  dateOfBirth                   DateTime?
+  dateOfDiagnosis               DateTime?
+  address                       String?
+  caregiversNumbers             String?
+
+  phoneNumber                   String?
+
+  
+  sentMessages                  ChatMessage[]
+}
+
+model ChatMessage {
+  id            Int      @id @default(autoincrement())
+  threadUserId  Int
+  senderId      Int
+  senderRole    String
+  content       String
+  createdAt     DateTime @default(now())
+
+  sender        User     @relation(fields: [senderId], references: [id])
 }
