@@ -28,19 +28,34 @@ model User {
   createdAt                     DateTime  @default(now())
   deletedAt                     DateTime?
   updatedAt                     DateTime  @updatedAt
+  doctor                        Doctor?
+  patient                       Patient?
 
-  liscenceNumber                String?   @unique
-  specialization                String?
-
-  dateOfBirth                   DateTime?
-  dateOfDiagnosis               DateTime?
-  address                       String?
-  caregiversNumbers             String?
-
-  phoneNumber                   String?
-
-  
   sentMessages                  ChatMessage[]
+}
+
+model Doctor {
+  id              Int       @id @default(autoincrement())
+  userId          Int       @unique
+  licenceNumber   String?   @unique
+  specialization  String?
+
+  user            User      @relation(fields: [userId], references: [id])
+  patients        Patient[]
+}
+
+model Patient {
+  id                Int       @id @default(autoincrement())
+  userId            Int       @unique
+  doctorId          Int?
+  dateOfBirth       DateTime?
+  dateOfDiagnosis   DateTime?
+  address           String?
+  caregiversNumbers String?
+  phoneNumber       String?
+
+  user              User      @relation(fields: [userId], references: [id])
+  doctor            Doctor?   @relation(fields: [doctorId], references: [id])
 }
 
 model ChatMessage {
