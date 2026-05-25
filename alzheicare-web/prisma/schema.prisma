@@ -32,6 +32,10 @@ model User {
   patient                       Patient?
 
   sentMessages                  ChatMessage[]
+
+  telegramChatId              String?       @unique
+  stripeCustomerId            String?       @unique
+  isPremium                   Boolean       @default(false)
 }
 
 model Doctor {
