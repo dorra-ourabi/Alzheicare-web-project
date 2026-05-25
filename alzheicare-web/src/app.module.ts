@@ -8,6 +8,8 @@ import { CalendarModule } from './calendar/calendar.module.js';
 import { ChatModule } from './chat/chat.module.js';
 import { DashboardModule } from './dashboard/dashboard.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
+import { EventEmitterModule } from '@nestjs/event-emitter';
+import { StripeModule } from './stripe/stripe.module.js';
 
 @Module({
   imports: [
@@ -18,6 +20,8 @@ import { PrismaModule } from './prisma/prisma.module.js';
     CalendarModule,
     ChatModule,
     DashboardModule,
+    EventEmitterModule.forRoot(),
+    StripeModule,
   ],
   controllers: [AppController],
   providers: [AppService],
