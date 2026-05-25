@@ -3,6 +3,7 @@ import {
   Post,
   Headers,
   Req,
+  Body,
   BadRequestException,
 } from '@nestjs/common';
 import type { Request } from 'express';
@@ -33,4 +34,18 @@ export class StripeController {
     // 3. Hand the raw data and the signature over to the Service to do the math.
     return this.stripeService.processWebhook(signature, rawBody);
   }
+
+  @Post('create-checkout-session')
+  async createSession(
+    //TO BE UPDATE AFTER THE IMPLEMENTATION OF THE GUARDS : For now, we accept them in the body for easy testing.
+    @Body('userId') userId: number,
+    @Body('email') email: string,
+  ) {
+    if (!userId || !email) {
+      throw new BadRequestException('userId and email are required to initiate payment');
+    }
+    return this.stripeService.createCheckoutSession(userId, email);
+  }
+
+  
 }

@@ -69,4 +69,42 @@ export class StripeService {
     // 3. Always return a 200 OK so Stripe knows you received it and doesn't retry.
     return { received: true };
   }
+
+  async createCheckoutSession(userId: number, userEmail: string) {
+    try {
+      const session = await this.stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        line_items: [
+          {
+            price_data: {
+              currency: 'usd',
+              product_data: {
+                name: 'AlzheiCare Premium Plan',
+                description: 'Full access to premium plan',
+              },
+              unit_amount: 1999, // $19.99 in cents
+              recurring: {
+                interval: 'month', // Makes it a recurring subscription
+              },
+            },
+            quantity: 1,
+          },
+        ],
+        mode: 'subscription',
+        metadata: {
+          userId: userId.toString(),
+        },
+        customer_email: userEmail,
+        // Where to send the user after they finish paying or cancel
+        success_url: `${process.env.FRONTEND_URL}/payment/success`,
+        cancel_url: `${process.env.FRONTEND_URL}/payment/cancel`,
+      });
+
+      return { url: session.url }; // Return the secure link to the frontend
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Failed to create checkout session: ${message}`);
+      throw new Error('Could not initiate payment session');
+    }
+  }
 }
