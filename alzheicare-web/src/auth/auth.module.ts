@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule } from '@nestjs/config';
 
-import { AuthController } from './controllers/auth.controller.js';
+import { AuthController, GoogleAuthController } from './controllers/auth.controller.js';
 import { AuthService } from './Services/auth.service.js';
 
 @Module({
@@ -13,7 +13,7 @@ import { AuthService } from './Services/auth.service.js';
       signOptions: { expiresIn: '15m' },
     }),
   ],
-  controllers: [AuthController],
+  controllers: [AuthController, GoogleAuthController],
   providers: [AuthService],
   exports: [AuthService],
 })

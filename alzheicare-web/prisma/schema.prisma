@@ -32,6 +32,15 @@ model User {
   patient                       Patient?
 
   sentMessages                  ChatMessage[]
+
+  googleAccessToken            String?
+  googleRefreshToken           String?
+  googleCalendarChannelId      String?
+  googleCalendarResourceId     String?
+  googleCalendarSyncToken      String?
+  googleCalendarChannelExpiresAt BigInt?
+
+  events                       CalendarEvent[]
 }
 
 model Doctor {
@@ -67,4 +76,32 @@ model ChatMessage {
   createdAt     DateTime @default(now())
 
   sender        User     @relation(fields: [senderId], references: [id])
+}
+
+
+enum CalendarCategory {
+  medicine
+  appointment
+  mundane
+}
+
+model CalendarEvent {
+  id                String   @id @default(uuid())
+  title             String
+  description       String?
+  startTime         DateTime
+  endTime           DateTime
+  googleEventId     String?
+  seriesId          String?
+  notifyBefore      Int      @default(30)
+  category          CalendarCategory @default(appointment)
+  repeatDaily       Boolean  @default(false)
+  repeatUntil       DateTime?
+  notificationSent  Boolean  @default(false)
+
+  userId            Int
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([startTime])
 }
