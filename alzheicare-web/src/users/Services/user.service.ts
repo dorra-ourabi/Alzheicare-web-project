@@ -4,9 +4,8 @@ import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
 import { JwtService } from '@nestjs/jwt';
 import { CreateUserDto } from '../DTOs/createUserDto.js';
-import { LoginCredentialsDto } from '../DTOs/LoginCredentialsDto.js';
 import { MailService } from '../../mail/mail.service.js';
-import { UserRole } from '../Enums/User.enum.js';
+import { UserRole } from '../../../generated/prisma/client.js';
 
 @Injectable()
 export class UserService {
@@ -17,16 +16,16 @@ export class UserService {
   ) {}
 
   async findAll() {
-    return this.prisma.user.findMany();
+    return this.prisma.user.findMany({ where: { deletedAt: null } });
   }
 
   async findOne(id: number) {
-    return this.prisma.user.findUnique({ where: { id } });
+    return this.prisma.user.findFirst({ where: { id, deletedAt: null } });
   }
 
   async create(user: CreateUserDto) {
     if (!user.password) {
-      throw new Error('Password is required.');
+      throw new Error('Password is required!');
     }
 
     const hashedPassword = await bcrypt.hash(user.password, 10);
@@ -41,7 +40,7 @@ export class UserService {
           secondName: user.secondName!,
           email: user.email!,
           password: hashedPassword,
-          role: user.Role || UserRole.Patient,
+          role: user.role || UserRole.Patient,
           emailVerificationToken,
           emailVerificationExpiresAt,
           isEmailVerified: false,
@@ -81,6 +80,12 @@ export class UserService {
       throw new NotFoundException(`User with id ${id} not found.`);
     }
 
-    await this.prisma.user.delete({ where: { id } });
+    await this.prisma.user.update({
+      where: { id },
+      data: {
+        deletedAt: new Date(),
+        updatedAt: new Date(),
+      },
+    });
   }
 }
