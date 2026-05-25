@@ -70,10 +70,30 @@ model Patient {
   caregiversNumbers String?
   phoneNumber       String?
 
-  user          User           @relation(fields: [userId], references: [id])
-  doctor        Doctor?        @relation(fields: [doctorId], references: [id])
-  invitations   Invitation[]
-  conversations Conversation[]
+  user              User              @relation(fields: [userId], references: [id])
+  doctor            Doctor?           @relation(fields: [doctorId], references: [id])
+  invitations       Invitation[]
+  conversations     Conversation[]
+  chronicDiseases   ChronicDisease[]
+}
+
+enum ChronicDiseaseType {
+  Hypertension
+  Diabetes
+  HeartDisease
+  Stroke
+  Other
+}
+
+model ChronicDisease {
+  id                Int                 @id @default(autoincrement())
+  patientId         Int
+  diseaseType       ChronicDiseaseType
+  diagnosisDate     DateTime
+  notes             String?
+  additionalDisease String?
+
+  patient Patient @relation(fields: [patientId], references: [id])
 }
 
 model ChatMessage {

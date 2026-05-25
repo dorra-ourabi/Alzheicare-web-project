@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { GraphQLModule } from '@nestjs/graphql';
+import { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { UsersModule } from './users/users.module.js';
@@ -19,6 +21,11 @@ import { StripeModule } from './stripe/stripe.module.js';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    GraphQLModule.forRoot<ApolloDriverConfig>({
+      driver: ApolloDriver,
+      autoSchemaFile: true,
+      sortSchema: true,
+    }),
     PrismaModule,
     UsersModule,
     AuthModule,
