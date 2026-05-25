@@ -1,4 +1,5 @@
 allowBuilds:
+  '@apollo/protobufjs': true
   '@nestjs/core': false
   '@prisma/engines': false
   bcrypt: false
