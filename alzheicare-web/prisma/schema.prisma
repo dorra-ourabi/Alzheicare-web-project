@@ -46,6 +46,7 @@ model Doctor {
 
   user            User      @relation(fields: [userId], references: [id])
   patients        Patient[]
+  invitations     Invitation[]
 }
 
 model Patient {
@@ -60,6 +61,7 @@ model Patient {
 
   user              User      @relation(fields: [userId], references: [id])
   doctor            Doctor?   @relation(fields: [doctorId], references: [id])
+  invitations       Invitation[]
 }
 
 model ChatMessage {
@@ -71,4 +73,27 @@ model ChatMessage {
   createdAt     DateTime @default(now())
 
   sender        User     @relation(fields: [senderId], references: [id])
+}
+
+model Invitation {
+  id          Int              @id @default(autoincrement())
+  patientId   Int
+  doctorId    Int?
+  doctorEmail String?
+  status      InvitationStatus @default(PENDING)
+  message     String?
+  token       String?          @unique
+  sentAt      DateTime         @default(now())
+  respondedAt DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  patient     Patient          @relation(fields: [patientId], references: [id])
+  doctor      Doctor?          @relation(fields: [doctorId], references: [id])
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
 }
