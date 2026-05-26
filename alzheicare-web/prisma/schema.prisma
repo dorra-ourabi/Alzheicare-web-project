@@ -33,6 +33,8 @@ model User {
 
   sentMessages                  ChatMessage[]
   messages                      Message[]
+  notifications                  Notification[]
+  webhookEvents                  WebhookEvent[]
 
   telegramChatId              String?       @unique
   stripeCustomerId            String?       @unique
