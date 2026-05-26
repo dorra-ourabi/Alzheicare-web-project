@@ -32,6 +32,7 @@ model User {
   patient                       Patient?
 
   sentMessages                  ChatMessage[]
+  messages                      Message[]
 
   telegramChatId              String?       @unique
   stripeCustomerId            String?       @unique
@@ -47,6 +48,7 @@ model Doctor {
   user            User      @relation(fields: [userId], references: [id])
   patients        Patient[]
   invitations     Invitation[]
+  conversations   Conversation[]
 }
 
 model Patient {
@@ -62,6 +64,7 @@ model Patient {
   user              User      @relation(fields: [userId], references: [id])
   doctor            Doctor?   @relation(fields: [doctorId], references: [id])
   invitations       Invitation[]
+  conversations     Conversation[]
 }
 
 model ChatMessage {
@@ -96,4 +99,39 @@ enum InvitationStatus {
   PENDING
   ACCEPTED
   REJECTED
+}
+
+model Conversation {
+  id            Int       @id @default(autoincrement())
+  patientId     Int
+  doctorId      Int
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  lastMessageAt DateTime?
+
+  patient       Patient   @relation(fields: [patientId], references: [id])
+  doctor        Doctor    @relation(fields: [doctorId], references: [id])
+  messages      Message[]
+
+  @@unique([patientId, doctorId])
+}
+
+model Message {
+  id             Int       @id @default(autoincrement())
+  conversationId Int
+  senderId       Int
+  content        String
+  sentAt         DateTime  @default(now())
+  readAt         DateTime?
+  status         MessageStatus @default(SENT)
+  attachmentUrl  String?
+
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  sender         User         @relation(fields: [senderId], references: [id])
+}
+
+enum MessageStatus {
+  SENT
+  DELIVERED
+  READ
 }
