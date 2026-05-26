@@ -10,6 +10,7 @@ import { MailModule } from './mail/mail.module.js';
 import { ChatModule } from './chat/chat.module.js';
 import { DashboardModule } from './dashboard/dashboard.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
+import { NotificationModule } from './notification/notification.module.js';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { StripeModule } from './stripe/stripe.module.js';
 
@@ -20,6 +21,7 @@ import { StripeModule } from './stripe/stripe.module.js';
     UsersModule,
     AuthModule,
     InvitationModule,
+    NotificationModule,
     CalendarModule,
     MailModule,
     ChatModule,
