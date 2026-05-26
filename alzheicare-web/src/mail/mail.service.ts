@@ -50,4 +50,77 @@ export class MailService {
       throw new InternalServerErrorException('Failed to send verification email');
     }
   }
+
+  async sendDoctorInvitationEmail(doctorUser: any, patientUser: any, message?: string) {
+    const url = this.config.get<string>('APP_URL') ?? 'https://alzheicare.com';
+    const html = `
+      <div style="font-family: Arial, sans-serif;">
+        <h2>A patient has invited you on AlzheiCare</h2>
+        <p><strong>${patientUser.firstName} ${patientUser.secondName}</strong> has invited you to connect.</p>
+        ${message ? `<p>Message: ${message}</p>` : ''}
+        <a href="${url}/dashboard" style="display:inline-block;padding:10px 16px;background:#10b981;color:#fff;border-radius:6px;text-decoration:none;">Open dashboard</a>
+      </div>
+    `;
+
+    try {
+      await this.mailer.sendMail({ to: doctorUser.email, subject: 'A patient has invited you on AlzheiCare', html });
+    } catch (err) {
+      throw new InternalServerErrorException('Failed to send doctor invitation email');
+    }
+  }
+
+  async sendOnboardingInvitationEmail(doctorEmail: string, patientUser: any, token: string, message?: string) {
+    const baseUrl = this.config.get<string>('APP_URL') ?? 'https://alzheicare.com';
+    const acceptUrl = `${baseUrl}/register?role=doctor&invitationToken=${token}`;
+    const declineUrl = `${baseUrl}/invitation/decline?token=${token}`;
+    const html = `
+      <div style="font-family: Arial, sans-serif;">
+        <h2>Your patient invites you to join AlzheiCare</h2>
+        <p><strong>${patientUser.firstName} ${patientUser.secondName}</strong> invites you to join AlzheiCare.</p>
+        ${message ? `<p>Message: ${message}</p>` : ''}
+        <a href="${acceptUrl}" style="display:inline-block;padding:10px 16px;background:#10b981;color:#fff;border-radius:6px;text-decoration:none;margin-right:8px;">Register & Accept</a>
+        <a href="${declineUrl}" style="display:inline-block;padding:10px 16px;background:#ef4444;color:#fff;border-radius:6px;text-decoration:none;">Decline</a>
+      </div>
+    `;
+
+    try {
+      await this.mailer.sendMail({ to: doctorEmail, subject: 'Your patient invites you to join AlzheiCare', html });
+    } catch (err) {
+      throw new InternalServerErrorException('Failed to send onboarding invitation email');
+    }
+  }
+
+  async sendInvitationAcceptedEmail(patientUser: any, doctorUser: any) {
+    const url = this.config.get<string>('APP_URL') ?? 'https://alzheicare.com';
+    const html = `
+      <div style="font-family: Arial, sans-serif;">
+        <h2>Your invitation was accepted</h2>
+        <p><strong>${doctorUser.firstName} ${doctorUser.secondName}</strong> accepted your invitation and is now connected with you.</p>
+        <a href="${url}/dashboard" style="display:inline-block;padding:10px 16px;background:#10b981;color:#fff;border-radius:6px;text-decoration:none;">Go to dashboard</a>
+      </div>
+    `;
+
+    try {
+      await this.mailer.sendMail({ to: patientUser.email, subject: 'Invitation accepted — AlzheiCare', html });
+    } catch (err) {
+      throw new InternalServerErrorException('Failed to send invitation accepted email');
+    }
+  }
+
+  async sendInvitationRejectedEmail(patientUser: any, doctorUser?: any) {
+    const url = this.config.get<string>('APP_URL') ?? 'https://alzheicare.com';
+    const html = `
+      <div style="font-family: Arial, sans-serif;">
+        <h2>Your invitation was declined</h2>
+        <p>Your invitation was declined.${doctorUser ? ` Doctor: ${doctorUser.firstName} ${doctorUser.secondName}` : ''}</p>
+        <a href="${url}/dashboard" style="display:inline-block;padding:10px 16px;background:#6b7280;color:#fff;border-radius:6px;text-decoration:none;">Go to dashboard</a>
+      </div>
+    `;
+
+    try {
+      await this.mailer.sendMail({ to: patientUser.email, subject: 'Invitation declined — AlzheiCare', html });
+    } catch (err) {
+      throw new InternalServerErrorException('Failed to send invitation rejected email');
+    }
+  }
 }
