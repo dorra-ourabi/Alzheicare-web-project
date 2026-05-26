@@ -1,4 +1,5 @@
-import { IsEmail, IsNotEmpty, IsOptional, IsString, IsInt } from 'class-validator';
+import { IsEmail, IsOptional, IsString, IsInt } from 'class-validator';
+import { AtLeastOneField } from '../../common/validators/at-least-one-field.validator.js';
 
 export class CreateInvitationDto {
   @IsOptional()
@@ -12,4 +13,9 @@ export class CreateInvitationDto {
   @IsOptional()
   @IsString()
   message?: string;
+
+  @AtLeastOneField(['doctorId', 'doctorEmail'], {
+    message: 'Either doctorId or doctorEmail must be provided.',
+  })
+  validationField?: boolean;
 }
