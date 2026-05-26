@@ -11,9 +11,9 @@ import { CreateUserDto } from '../DTOs/createUserDto.js';
 import { MailService } from '../../mail/mail.service.js';
 import { UserRole } from '../../../generated/prisma/client.js';
 import { OnEvent } from '@nestjs/event-emitter';
-import type { Checkout } from 'stripe';
+import type Stripe from 'stripe';
 
-type CheckoutSession = Checkout.Session;
+type CheckoutSession = Stripe.Checkout.Session;
 
 @Injectable()
 export class UserService {
