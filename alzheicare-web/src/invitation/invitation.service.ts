@@ -114,10 +114,18 @@ export class InvitationService {
       await this.prisma.patient.update({ where: { id: invitation.patientId }, data: { doctorId } });
       const conversation = await this.prisma.conversation.create({ data: { patientId: invitation.patientId, doctorId } });
 
-      try {
-        await this.mailService.sendInvitationAcceptedEmail(invitation.patient.user, invitation.doctor.user);
-      } catch (err) {
-        this.eventEmitter.emit('webhook.email.failed', { to: invitation.patient.user.email, err });
+      if (invitation.doctor?.user) {
+        try {
+          await this.mailService.sendInvitationAcceptedEmail(
+            invitation.patient.user,
+            invitation.doctor.user,
+          );
+        } catch (err) {
+          this.eventEmitter.emit('webhook.email.failed', {
+            to: invitation.patient.user.email,
+            err,
+          });
+        }
       }
 
       this.eventEmitter.emit('notification.invitation_accepted', { toUserId: invitation.patient.userId, conversationId: conversation.id });
