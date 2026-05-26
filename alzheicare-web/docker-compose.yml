@@ -18,10 +18,18 @@ services:
     restart: unless-stopped
     ports:
       - "6379:6379"
+<<<<<<< HEAD
     volumes:
       - redis_data:/data
 
 volumes:
   postgres_data:
   redis_data:
+=======
+
+volumes:
+  postgres_data:
+
+
+>>>>>>> origin/calendar
   
