@@ -7,6 +7,7 @@ import { NotificationSchedulerService } from './notification-scheduler.service.j
 import { NotificationService } from './notification.service.js';
 import { NOTIFICATIONS_QUEUE } from './notifications.constant.js';
 import { MailService } from './providers/mail.service.js';
+import { TelegramService } from './providers/telegram.service.js';
 
 @Module({
   imports: [
@@ -54,7 +55,13 @@ import { MailService } from './providers/mail.service.js';
     }),
     BullModule.registerQueue({ name: NOTIFICATIONS_QUEUE }),
   ],
-  providers: [MailService, NotificationService, NotificationSchedulerService, NotificationProcessor],
+  providers: [
+    MailService,
+    NotificationService,
+    NotificationSchedulerService,
+    NotificationProcessor,
+    TelegramService,
+  ],
   exports: [MailService, NotificationSchedulerService, NotificationService],
 })
 export class NotificationsModule {}

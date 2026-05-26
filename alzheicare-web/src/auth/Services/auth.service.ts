@@ -16,11 +16,11 @@ import { RefreshTokenDto } from '../DTOs/RefreshTokenDto.js';
 import { AuthTokensDto } from '../DTOs/AuthTokenDto.js';
 import { AuthResponseDto } from '../DTOs/AuthResponseDto.js';
 import { GoogleLoginDto } from '../DTOs/GoogleLoginDto.js';
-import { UserRole } from '../../users/Enums/User.enum.js';
+import { UserRole } from '../../../generated/prisma/client.js';
 
 @Injectable()
 export class AuthService {
-  private sessions = new Map<string, string>(); 
+  private sessions = new Map<string, string>();
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
@@ -28,7 +28,9 @@ export class AuthService {
   ) {}
 
   async login(loginDto: LoginCredentialsDto): Promise<AuthResponseDto> {
-    const user = await this.prisma.user.findUnique({ where: { username: loginDto.username } });
+    const user = await this.prisma.user.findUnique({
+      where: { username: loginDto.username },
+    });
 
     if (!user) {
       throw new NotFoundException('Invalid username');
@@ -38,7 +40,10 @@ export class AuthService {
       throw new NotFoundException('Invalid username or password.');
     }
 
-    const isPasswordValid = await bcrypt.compare(loginDto.password, user.password);
+    const isPasswordValid = await bcrypt.compare(
+      loginDto.password,
+      user.password,
+    );
     if (!isPasswordValid) {
       throw new NotFoundException('Invalid Password.');
     }
@@ -95,9 +100,16 @@ export class AuthService {
     if (!user) {
       const baseUsername = (email.split('@')[0] || 'user').toLowerCase();
       const username = await this.ensureUniqueUsername(baseUsername);
-      const firstName = payload?.given_name || payload?.name?.split(' ')[0] || 'Google';
-      const secondName = payload?.family_name || payload?.name?.split(' ').slice(1).join(' ') || 'User';
-      const hashedPassword = await bcrypt.hash(randomBytes(32).toString('hex'), 10);
+      const firstName =
+        payload?.given_name || payload?.name?.split(' ')[0] || 'Google';
+      const secondName =
+        payload?.family_name ||
+        payload?.name?.split(' ').slice(1).join(' ') ||
+        'User';
+      const hashedPassword = await bcrypt.hash(
+        randomBytes(32).toString('hex'),
+        10,
+      );
 
       user = await this.prisma.user.create({
         data: {
@@ -116,9 +128,14 @@ export class AuthService {
     return this.buildAuthResponse(user, sessionId);
   }
 
-  private async buildTokens(user: any, sessionId: string): Promise<AuthTokensDto> {
+  private async buildTokens(
+    user: any,
+    sessionId: string,
+  ): Promise<AuthTokensDto> {
     if (!user.id || !user.username || !user.role) {
-      throw new UnauthorizedException('User data incomplete for token generation');
+      throw new UnauthorizedException(
+        'User data incomplete for token generation',
+      );
     }
 
     const accessToken = await this.jwtService.signAsync(
@@ -148,7 +165,10 @@ export class AuthService {
     return { accessToken, refreshToken };
   }
 
-  private async buildAuthResponse(user: any, sessionId: string): Promise<AuthResponseDto> {
+  private async buildAuthResponse(
+    user: any,
+    sessionId: string,
+  ): Promise<AuthResponseDto> {
     const tokens = await this.buildTokens(user, sessionId);
     await this.storeRefreshHash(sessionId, tokens.refreshToken);
 
@@ -175,7 +195,9 @@ export class AuthService {
     return username;
   }
 
-  private async verifyRefreshToken(refreshToken: string): Promise<{ sub: number; sessionId: string }> {
+  private async verifyRefreshToken(
+    refreshToken: string,
+  ): Promise<{ sub: number; sessionId: string }> {
     try {
       return await this.jwtService.verifyAsync(refreshToken, {
         secret: this.refreshSecret(),
@@ -194,18 +216,23 @@ export class AuthService {
   }
 
   private accessSecret() {
-    return this.configService.get<string>('JWT_ACCESS_SECRET') || 'dev_access_secret';
+    return (
+      this.configService.get<string>('JWT_ACCESS_SECRET') || 'dev_access_secret'
+    );
   }
 
   private refreshSecret() {
-    return this.configService.get<string>('JWT_REFRESH_SECRET') || 'dev_refresh_secret';
+    return (
+      this.configService.get<string>('JWT_REFRESH_SECRET') ||
+      'dev_refresh_secret'
+    );
   }
 
   private accessExpires() {
-    return 15 * 60; 
+    return 15 * 60;
   }
 
   private refreshExpires() {
-    return 7 * 24 * 60 * 60; 
+    return 7 * 24 * 60 * 60;
   }
 }
