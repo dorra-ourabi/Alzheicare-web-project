@@ -8,7 +8,7 @@ import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
 import { JwtService } from '@nestjs/jwt';
 import { CreateUserDto } from '../DTOs/createUserDto.js';
-import { MailService } from '../../notifications/providers/mail.service.js';
+import { MailService } from '../../mail/mail.service.js';
 import { UserRole } from '../../../generated/prisma/client.js';
 import { OnEvent } from '@nestjs/event-emitter';
 import Stripe from 'stripe';

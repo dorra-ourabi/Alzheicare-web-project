@@ -1,31 +1,18 @@
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
-import { MailerModule } from '@nestjs-modules/mailer';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { NotificationProcessor } from './notification.processor.js';
 import { NotificationSchedulerService } from './notification-scheduler.service.js';
 import { NotificationService } from './notification.service.js';
 import { NOTIFICATIONS_QUEUE } from './notifications.constant.js';
-import { MailService } from './providers/mail.service.js';
-import { TelegramService } from './providers/telegram.service.js';
+import { MailModule } from '../mail/mail.module.js';
+import { TelegramModule } from '../telegram/telegram.module.js';
 
 @Module({
   imports: [
     ConfigModule,
-    MailerModule.forRoot({
-      transport: {
-        host: process.env.MAIL_HOST || 'smtp.gmail.com',
-        port: 587,
-        secure: false,
-        auth: {
-          user: process.env.MAIL_USER,
-          pass: process.env.MAIL_PASS,
-        },
-      },
-      defaults: {
-        from: '"AlzheiCare" <noreply@alzheicare.com>',
-      },
-    }),
+    MailModule,
+    TelegramModule,
     BullModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -56,12 +43,10 @@ import { TelegramService } from './providers/telegram.service.js';
     BullModule.registerQueue({ name: NOTIFICATIONS_QUEUE }),
   ],
   providers: [
-    MailService,
     NotificationService,
     NotificationSchedulerService,
     NotificationProcessor,
-    TelegramService,
   ],
-  exports: [MailService, NotificationSchedulerService, NotificationService],
+  exports: [MailModule, NotificationSchedulerService, NotificationService],
 })
 export class NotificationsModule {}

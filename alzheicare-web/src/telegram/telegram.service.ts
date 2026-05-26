@@ -5,7 +5,7 @@ import {
   OnModuleDestroy,
 } from '@nestjs/common';
 import { Telegraf } from 'telegraf';
-import { PrismaService } from '../../prisma/prisma.service.js';
+import { PrismaService } from '../prisma/prisma.service.js';
 
 @Injectable()
 export class TelegramService implements OnModuleInit, OnModuleDestroy {

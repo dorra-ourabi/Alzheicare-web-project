@@ -10,7 +10,8 @@ export class MailService {
   ) {}
 
   async sendVerificationEmail(user: any, token: string): Promise<void> {
-    const baseUrl = this.config.get<string>('APP_URL') ?? 'http://localhost:3000';
+    const baseUrl =
+      this.config.get<string>('APP_URL') ?? 'http://localhost:3000';
     const url = `${baseUrl}/auth/verify-email?token=${token}`;
 
     const html = `
@@ -47,7 +48,9 @@ export class MailService {
       });
       console.log(`Verification email sent to ${user.email}`);
     } catch (error) {
-      throw new InternalServerErrorException('Failed to send verification email');
+      throw new InternalServerErrorException(
+        'Failed to send verification email',
+      );
     }
   }
 }
