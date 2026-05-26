@@ -1,16 +1,16 @@
 import { Injectable } from '@nestjs/common';
-import type { ChronicDisease, Patient } from '../../generated/prisma/client.js';
+import type {
+  ChronicDisease,
+  Medication,
+  Patient,
+} from '../../generated/prisma/client.js';
+import type { CreateMedicationInput } from './dto/create-medication.input.js';
+import type { UpdateMedicationInput } from './dto/update-medication.input.js';
+import type { CreatePatientInput } from './dto/create-patient.input.js';
+import type { UpdatePatientInput } from './dto/update-patient.input.js';
+import type { CreateChronicDiseaseInput } from './dto/create-chronic-disease.input.js';
+import type { UpdateChronicDiseaseInput } from './dto/update-chronic-disease.input.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-
-export type Medication = {
-  id: number;
-  patientId: number;
-  name: string;
-  dosage?: string;
-  startDate: Date;
-  endDate?: Date;
-  notes?: string;
-};
 
 @Injectable()
 export class DashboardService {
@@ -23,12 +23,75 @@ export class DashboardService {
     });
   }
 
-  getMedicationsByPatient(patientId: number): Promise<Medication[]> {
-    void patientId;
-    // The Medication model is now in Prisma schema, but the Prisma client
-    // must be regenerated and migrations applied before this query can be
-    // implemented using `this.prisma.medication.findMany(...)`.
-    return Promise.resolve([]);
+  async createChronicDisease(
+    data: CreateChronicDiseaseInput,
+  ): Promise<ChronicDisease> {
+    return await this.prisma.chronicDisease.create({
+      data,
+    });
+  }
+
+  async updateChronicDisease(
+    data: UpdateChronicDiseaseInput,
+  ): Promise<ChronicDisease> {
+    const { id, ...rest } = data;
+    return await this.prisma.chronicDisease.update({
+      where: { id },
+      data: rest,
+    });
+  }
+
+  async deleteChronicDisease(id: number): Promise<ChronicDisease> {
+    return await this.prisma.chronicDisease.delete({
+      where: { id },
+    });
+  }
+
+  async getMedicationsByPatient(patientId: number): Promise<Medication[]> {
+    return await this.prisma.medication.findMany({
+      where: { patientId },
+      orderBy: { startDate: 'desc' },
+    });
+  }
+
+  async createMedication(data: CreateMedicationInput): Promise<Medication> {
+    return await this.prisma.medication.create({
+      data,
+    });
+  }
+
+  async updateMedication(data: UpdateMedicationInput): Promise<Medication> {
+    const { id, ...rest } = data;
+    return await this.prisma.medication.update({
+      where: { id },
+      data: rest,
+    });
+  }
+
+  async deleteMedication(id: number): Promise<Medication> {
+    return await this.prisma.medication.delete({
+      where: { id },
+    });
+  }
+
+  async createPatient(data: CreatePatientInput): Promise<Patient> {
+    return await this.prisma.patient.create({
+      data,
+    });
+  }
+
+  async updatePatient(data: UpdatePatientInput): Promise<Patient> {
+    const { id, ...rest } = data;
+    return await this.prisma.patient.update({
+      where: { id },
+      data: rest,
+    });
+  }
+
+  async deletePatient(id: number): Promise<Patient> {
+    return await this.prisma.patient.delete({
+      where: { id },
+    });
   }
 
   async getPatientsByDoctor(doctorId: number): Promise<Patient[]> {
