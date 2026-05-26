@@ -75,6 +75,7 @@ model Patient {
   invitations       Invitation[]
   conversations     Conversation[]
   chronicDiseases   ChronicDisease[]
+  medications       Medication[]
 }
 
 enum ChronicDiseaseType {
@@ -92,6 +93,18 @@ model ChronicDisease {
   diagnosisDate     DateTime
   notes             String?
   additionalDisease String?
+
+  patient Patient @relation(fields: [patientId], references: [id])
+}
+
+model Medication {
+  id         Int      @id @default(autoincrement())
+  patientId  Int
+  name       String
+  dosage     String?
+  startDate  DateTime
+  endDate    DateTime?
+  notes      String?
 
   patient Patient @relation(fields: [patientId], references: [id])
 }
