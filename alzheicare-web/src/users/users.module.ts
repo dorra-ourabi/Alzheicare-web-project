@@ -3,7 +3,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule } from '@nestjs/config';
 import { UserController } from './Controllers/user.controller.js';
 import { UserService } from './Services/user.service.js';
-import { NotificationsModule } from '../notifications/notifications.module.js';
+import { MailModule } from '../mail/mail.module.js';
 
 @Module({
   imports: [
@@ -12,7 +12,7 @@ import { NotificationsModule } from '../notifications/notifications.module.js';
       secret: process.env.JWT_SECRET || 'dev_secret',
       signOptions: { expiresIn: '1h' },
     }),
-    NotificationsModule,
+    MailModule,
   ],
   controllers: [UserController],
   providers: [UserService],
