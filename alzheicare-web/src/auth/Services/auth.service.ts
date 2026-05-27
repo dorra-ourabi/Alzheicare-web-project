@@ -12,6 +12,7 @@ import { RedisService } from './redis.service.js';
 import { AuthGoogleLoginDto } from '../DTOs/AuthGoogleLoginDto.js';
 import { AuthGoogleService } from './googleAuthservice.js';
 import { UserRole } from '../../../generated/prisma/client.js';
+import { MailService } from '../../mail/mail.service.js';
 
 @Injectable()
 export class AuthService {
@@ -21,6 +22,7 @@ export class AuthService {
     private readonly configService: ConfigService,
     private readonly redisService: RedisService,
     private readonly authGoogleService: AuthGoogleService,
+    private readonly mailService: MailService,
   ) {}
 //this funnctioon returns double tokens (access and refresh) when the user logs in with his credentials
   async login(loginDto: LoginCredentialsDto): Promise<AuthTokensDto> {
@@ -37,6 +39,27 @@ export class AuthService {
     const isPasswordValid = await bcrypt.compare(loginDto.password, user.password);
     if (!isPasswordValid) {
       throw new UnauthorizedException('Unauthorized');
+    }
+
+    if (!user.isEmailVerified) {
+      const now = new Date();
+      let token = user.emailVerificationToken;
+      let expiresAt = user.emailVerificationExpiresAt;
+
+      if (!token || !expiresAt || expiresAt <= now) {
+        token = randomBytes(32).toString('hex');
+        expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+        await this.prisma.user.update({
+          where: { id: user.id },
+          data: {
+            emailVerificationToken: token,
+            emailVerificationExpiresAt: expiresAt,
+          },
+        });
+      }
+
+      await this.mailService.sendVerificationEmail(user, token);
+      throw new UnauthorizedException('Email not verified');
     }
 
     const sessionId = randomUUID();
@@ -171,11 +194,37 @@ export class AuthService {
   async verifyAccessToken(token: string): Promise<{ sub: number; username: string; role: UserRole; sessionId: string }> {
     try {
       return await this.jwtService.verifyAsync(token, {
-        secret: this.accessSecret(),
+        secret: this.accessSecret(), 
       });
     } catch {
       throw new UnauthorizedException('Invalid access token');
     }
+  }
+
+  async verifyEmail(token: string): Promise<{ success: true }> {
+    const now = new Date();
+    const user = await this.prisma.user.findFirst({
+      where: {
+        emailVerificationToken: token,
+        emailVerificationExpiresAt: { gt: now },
+        deletedAt: null,
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('Invalid or expired verification token');
+    }
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        isEmailVerified: true,
+        emailVerificationToken: null,
+        emailVerificationExpiresAt: null,
+      },
+    });
+
+    return { success: true };
   }
 
   private async storeRefreshHash(sessionId: string, refreshToken: string) {

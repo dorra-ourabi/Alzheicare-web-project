@@ -58,8 +58,17 @@ export class UserService {
         select: {
           email: true,
           username: true,
+          firstName: true,
         },
       });
+
+      await this.mailService.sendVerificationEmail(
+        {
+          email: user.email,
+          firstName: user.firstName,
+        },
+        emailVerificationToken,
+      );
 
       return newUser;
     } catch (e) {

@@ -56,6 +56,9 @@ importers:
       google-auth-library:
         specifier: ^10.6.2
         version: 10.6.2
+      handlebars:
+        specifier: ^4.7.9
+        version: 4.7.9
       ioredis:
         specifier: ^5.11.0
         version: 5.11.0

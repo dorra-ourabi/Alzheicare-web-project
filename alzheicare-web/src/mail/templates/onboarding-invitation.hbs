@@ -1,0 +1,9 @@
+<div style="font-family: Arial, sans-serif;">
+  <h2>Your patient invites you to join AlzheiCare</h2>
+  <p><strong>{{patientName}}</strong> invites you to join AlzheiCare.</p>
+  {{#if message}}
+    <p>Message: {{message}}</p>
+  {{/if}}
+  <a href="{{acceptUrl}}" style="display:inline-block;padding:10px 16px;background:#10b981;color:#fff;border-radius:6px;text-decoration:none;margin-right:8px;">Register & Accept</a>
+  <a href="{{declineUrl}}" style="display:inline-block;padding:10px 16px;background:#ef4444;color:#fff;border-radius:6px;text-decoration:none;">Decline</a>
+</div>

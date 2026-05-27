@@ -13,6 +13,8 @@ import { Server, Socket } from 'socket.io';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { ChatService } from './chat.service.js';
 import { AuthService } from '../auth/Services/auth.service.js';
+import { RedisService } from '../auth/Services/redis.service.js';
+import { MailService } from '../mail/mail.service.js';
 
 // @WebSocketGateway opens a WebSocket server alongside the HTTP server.
 // cors: '*' allows any frontend to connect — restrict this in production.
@@ -29,6 +31,8 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     private readonly chatService: ChatService,
     private readonly prisma: PrismaService,
     private readonly authService: AuthService,
+    private readonly redisService: RedisService,
+    private readonly mailService: MailService,
   ) {}
 
   // ─── afterInit ────────────────────────────────────────────────────────────
@@ -167,6 +171,10 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     // Fetch the conversation to verify ownership
     const conversation = await this.prisma.conversation.findUnique({
       where: { id: payload.conversationId },
+      include: {
+        doctor: { include: { user: true } },
+        patient: { include: { user: true } },
+      },
     });
     if (!conversation) throw new WsException('Conversation not found');
 
@@ -184,6 +192,21 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       senderId: authUser.userId,
       content,
     });
+
+    const shouldNotify = await this.redisService.setIfNotExists(
+      this.firstMessageNotifyKey(conversation.id),
+      '1',
+      this.firstMessageNotifyTtlSeconds(),
+    );
+
+    if (shouldNotify && conversation.doctor?.user && conversation.patient?.user) {
+      await this.mailService.sendFirstMessageAfterPeriodEmail(
+        conversation.doctor.user,
+        conversation.patient.user,
+        authUser.username,
+        message.content,
+      );
+    }
 
     console.log(`message in room ${room} from ${authUser.username}: ${content}`);
 
@@ -272,6 +295,14 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   // add other room types (e.g. "notifications:user:X").
   private getRoom(conversationId: number) {
     return `chat:conversation:${conversationId}`;
+  }
+
+  private firstMessageNotifyKey(conversationId: number) {
+    return `chat:first-message:${conversationId}`;
+  }
+
+  private firstMessageNotifyTtlSeconds() {
+    return 24 * 60 * 60;
   }
 
   // Extracts the token from an "Authorization: Bearer <token>" header.

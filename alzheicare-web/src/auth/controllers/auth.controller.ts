@@ -1,4 +1,4 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { AuthService } from '../Services/auth.service.js';
 import { LoginCredentialsDto } from '../../users/DTOs/LoginCredentialsDto.js';
 import { RefreshTokenDto } from '../DTOs/RefreshTokenDto.js';
@@ -26,5 +26,10 @@ export class AuthController {
   @Post('google-login')
   googleLogin(@Body() dto: AuthGoogleLoginDto): Promise<AuthTokensDto> {
     return this.authService.googleLogin(dto);
+  }
+
+  @Get('verify-email')
+  verifyEmail(@Query('token') token: string): Promise<{ success: true }> {
+    return this.authService.verifyEmail(token);
   }
 }

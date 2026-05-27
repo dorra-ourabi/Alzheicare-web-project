@@ -23,6 +23,11 @@ export class RedisService implements OnModuleDestroy {
     await this.client.set(key, value, 'EX', ttlSeconds);
   }
 
+  async setIfNotExists(key: string, value: string, ttlSeconds: number) {
+    const result = await this.client.set(key, value, 'EX', ttlSeconds, 'NX');
+    return result === 'OK';
+  }
+
   async del(key: string) {
     await this.client.del(key);
   }
