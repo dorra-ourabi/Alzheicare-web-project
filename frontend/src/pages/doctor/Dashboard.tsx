@@ -3,15 +3,28 @@ import DoctorSidebar from "../../components/doctor/Sidebar";
 import StatsBar from "../../components/doctor/StatsBar";
 import PatientInbox from "../../components/doctor/PatientInbox";
 import MRIClassifier from "../../components/doctor/MRIClassifier";
+import { useAuth } from "../../context/AuthContext";
 
 export default function DoctorDashboard() {
+  const { token } = useAuth();
+
   const handleSubscribe = async () => {
     try {
+      if (!token) {
+        window.alert("Please sign in to continue.");
+        return;
+      }
+
       const res = await axios.post(
         "http://localhost:3000/webhooks/stripe/create-checkout-session",
         {
           userId: 1,
           email: "test@example.com",
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
         },
       );
 

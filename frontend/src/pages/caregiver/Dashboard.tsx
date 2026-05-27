@@ -1,5 +1,6 @@
 import { useState } from "react";
 import axios from "axios";
+import { useAuth } from "../../context/AuthContext";
 import Sidebar from "../../components/caregiver/Sidebar";
 import PatientOverview from "../../components/caregiver/PatientOverview";
 import BehavioralChart from "../../components/caregiver/BehavioralChart";
@@ -10,14 +11,25 @@ import DailyLogModal from "../../components/caregiver/DailyLogModal";
 
 export default function CaregiverDashboard() {
   const [showModal, setShowModal] = useState(false);
+  const { token } = useAuth();
 
   const handleSubscribe = async () => {
     try {
+      if (!token) {
+        window.alert("Please sign in to continue.");
+        return;
+      }
+
       const res = await axios.post(
         "http://localhost:3000/webhooks/stripe/create-checkout-session",
         {
           userId: 1,
           email: "test@example.com",
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
         },
       );
 

@@ -86,7 +86,17 @@ export default function DoctorNotifications() {
 
   const handleConnectTelegram = async () => {
     try {
-      const res = await fetch("http://localhost:3000/telegram/link");
+      if (!token) {
+        window.alert("Please sign in to continue.");
+        return;
+      }
+
+      const res = await fetch("http://localhost:3000/telegram/link", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
       if (!res.ok) {
         throw new Error("Failed to fetch Telegram link");
       }
