@@ -34,6 +34,7 @@
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "bcrypt": "^6.0.0",
+    "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
     "dotenv": "^17.4.2",
     "google-auth-library": "^10.6.2",
@@ -93,3 +94,4 @@
   "prisma": {
     "seed": "node --loader ts-node/esm prisma/seed.ts"
   }
+}
