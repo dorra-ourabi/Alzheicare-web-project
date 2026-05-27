@@ -1,12 +1,19 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
 import { JwtService } from '@nestjs/jwt';
 import { CreateUserDto } from '../DTOs/createUserDto.js';
-import { LoginCredentialsDto } from '../DTOs/LoginCredentialsDto.js';
 import { MailService } from '../../mail/mail.service.js';
-import { UserRole } from '../Enums/User.enum.js';
+import { UserRole } from '../../../generated/prisma/client.js';
+import { OnEvent } from '@nestjs/event-emitter';
+import type Stripe from 'stripe';
+
+type CheckoutSession = Stripe.Checkout.Session;
 
 @Injectable()
 export class UserService {
@@ -17,21 +24,23 @@ export class UserService {
   ) {}
 
   async findAll() {
-    return this.prisma.user.findMany();
+    return this.prisma.user.findMany({ where: { deletedAt: null } });
   }
 
   async findOne(id: number) {
-    return this.prisma.user.findUnique({ where: { id } });
+    return this.prisma.user.findFirst({ where: { id, deletedAt: null } });
   }
 
   async create(user: CreateUserDto) {
     if (!user.password) {
-      throw new Error('Password is required.');
+      throw new Error('Password is required!');
     }
 
     const hashedPassword = await bcrypt.hash(user.password, 10);
     const emailVerificationToken = randomBytes(32).toString('hex');
-    const emailVerificationExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const emailVerificationExpiresAt = new Date(
+      Date.now() + 24 * 60 * 60 * 1000,
+    );
 
     try {
       const newUser = await this.prisma.user.create({
@@ -41,7 +50,7 @@ export class UserService {
           secondName: user.secondName!,
           email: user.email!,
           password: hashedPassword,
-          role: user.Role || UserRole.Patient,
+          role: user.role || UserRole.Patient,
           emailVerificationToken,
           emailVerificationExpiresAt,
           isEmailVerified: false,
@@ -52,11 +61,12 @@ export class UserService {
         },
       });
 
-
       return newUser;
     } catch (e) {
       console.error('Error creating user:', e);
-      throw new ConflictException('Email already exists or username already exists');
+      throw new ConflictException(
+        'Email already exists or username already exists',
+      );
     }
   }
 
@@ -81,6 +91,52 @@ export class UserService {
       throw new NotFoundException(`User with id ${id} not found.`);
     }
 
-    await this.prisma.user.delete({ where: { id } });
+    await this.prisma.user.update({
+      where: { id },
+      data: {
+        deletedAt: new Date(),
+        updatedAt: new Date(),
+      },
+    });
+  }
+
+  @OnEvent('stripe.payment.success')
+  async handleSubscriptionActivated(session: CheckoutSession) {
+    console.log(
+      `[Event Listener] Intercepted stripe.payment.success for session: ${session.id}`,
+    );
+
+    const userId = session.metadata?.userId
+      ? parseInt(session.metadata.userId, 10)
+      : null;
+    const stripeCustomerId = session.customer as string;
+
+    if (!userId) {
+      console.error(
+        `[Event Error] No userId found in Stripe session metadata.`,
+      );
+      return;
+    }
+
+    try {
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: {
+          stripeCustomerId: stripeCustomerId,
+          isPremium: true,
+        },
+      });
+
+      console.log(
+        `[Database Sync] Successfully upgraded User #${userId} to Premium!`,
+      );
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      console.error(
+        `[Database Error] Failed to update premium status for User #${userId}:`,
+        errorMessage,
+      );
+    }
   }
 }

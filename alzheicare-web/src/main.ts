@@ -4,13 +4,15 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module.js';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
-  
+  const app = await NestFactory.create(AppModule, {
+    rawBody: true, // needed for Stripe webhooks
+  });
+
   // Enable versioning
   app.enableVersioning({
     type: VersioningType.URI,
   });
-  
+
   // Enable CORS
   app.enableCors({
     origin: process.env.FRONTEND_URL || 'http://localhost:5173',
@@ -18,7 +20,8 @@ async function bootstrap() {
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   });
-  
+
+  // Global validation
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -27,14 +30,17 @@ async function bootstrap() {
     }),
   );
 
+  // Swagger setup
   const config = new DocumentBuilder()
     .setTitle('Alzheicare API')
     .setDescription('API documentation')
     .setVersion('1.0')
     .build();
+
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api', app, document);
 
   await app.listen(process.env.PORT ?? 3000);
 }
+
 bootstrap();
