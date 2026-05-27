@@ -1,8 +1,9 @@
-import { Body, Controller, Get, Post, Patch, UseGuards, Query, Param, Req, ParseIntPipe } from '@nestjs/common';
+import { Body, Controller, Get, Post, Patch, UseGuards, Query, Param, Req, ParseIntPipe, ForbiddenException } from '@nestjs/common';
 import { InvitationService } from './invitation.service.js';
 import { JwtAuthGuard } from '../auth/Guards/jwt.guard.js';
 import { CreateInvitationDto } from './dto/create-invitation.dto.js';
 import { RespondInvitationDto, RespondStatus } from './dto/respond-invitation.dto.js';
+import { RespondViaTokenDto } from './dto/respond-via-token.dto.js';
 
 @Controller('invitations')
 export class InvitationController {
@@ -11,7 +12,9 @@ export class InvitationController {
   @UseGuards(JwtAuthGuard)
   @Post()
   sendInvitation(@Req() req: any, @Body() dto: CreateInvitationDto) {
-    if (req.user.role !== 'Patient') throw new Error('Forbidden');
+    if (req.user.role !== 'Patient') {
+      throw new ForbiddenException('Only patients can send invitations');
+    }
     return this.invitationService.sendInvitation(req.user.sub, dto);
   }
 
@@ -30,14 +33,18 @@ export class InvitationController {
   @UseGuards(JwtAuthGuard)
   @Patch(':id/respond')
   respond(@Req() req: any, @Param('id', ParseIntPipe) id: number, @Body() dto: RespondInvitationDto) {
-    if (req.user.role !== 'Doctor') throw new Error('Forbidden');
+    if (req.user.role !== 'Doctor') {
+      throw new ForbiddenException('Only doctors can respond to invitations');
+    }
     return this.invitationService.respondToInvitation(req.user.sub, id, dto);
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('respond-via-token')
-  respondViaToken(@Req() req: any, @Body('token') token: string, @Body('action') action: RespondStatus) {
-    if (req.user.role !== 'Doctor') throw new Error('Forbidden');
-    return this.invitationService.respondViaToken(token, req.user.sub, action);
+  respondViaToken(@Req() req: any, @Body() dto: RespondViaTokenDto) {
+    if (req.user.role !== 'Doctor') {
+      throw new ForbiddenException('Only doctors can respond via token');
+    }
+    return this.invitationService.respondViaToken(dto.token, req.user.sub, dto.action);
   }
 }

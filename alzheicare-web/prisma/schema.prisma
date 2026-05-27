@@ -33,6 +33,8 @@ model User {
 
   sentMessages                  ChatMessage[]
   messages                      Message[]
+  notifications                  Notification[]
+  webhookEvents                  WebhookEvent[]
 
   telegramChatId              String?       @unique
   stripeCustomerId            String?       @unique
@@ -134,4 +136,69 @@ enum MessageStatus {
   SENT
   DELIVERED
   READ
+}
+
+model Notification {
+  id            Int               @id @default(autoincrement())
+  userId        Int
+  type          NotificationType
+  title         String
+  body          String?
+  isRead        Boolean           @default(false)
+  referenceId   Int?
+  referenceType String?
+  createdAt     DateTime          @default(now())
+  readAt        DateTime?
+
+  user          User              @relation(fields: [userId], references: [id])
+}
+
+enum NotificationType {
+  NEW_MESSAGE
+  INVITATION_RECEIVED
+  INVITATION_ACCEPTED
+  INVITATION_REJECTED
+  CALENDAR_REMINDER
+  MEDICATION_DUE
+  SYSTEM
+}
+
+model WebhookEvent {
+  id           Int             @id @default(autoincrement())
+  userId       Int
+  channel      WebhookChannel
+  triggerType  WebhookTrigger
+  recipient    String
+  subject      String?
+  payload      Json
+  status       WebhookStatus   @default(PENDING)
+  attemptCount Int             @default(0)
+  lastAttemptAt DateTime?
+  deliveredAt  DateTime?
+  errorMessage String?
+  createdAt    DateTime        @default(now())
+
+  user         User            @relation(fields: [userId], references: [id])
+}
+
+enum WebhookChannel {
+  EMAIL
+  SMS
+  WHATSAPP
+}
+
+enum WebhookStatus {
+  PENDING
+  SENT
+  FAILED
+  RETRY
+}
+
+enum WebhookTrigger {
+  INVITATION_SENT
+  INVITATION_ACCEPTED
+  INVITATION_REJECTED
+  NEW_MESSAGE
+  CALENDAR_REMINDER
+  MEDICATION_DUE
 }
