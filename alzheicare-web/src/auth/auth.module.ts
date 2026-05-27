@@ -5,6 +5,7 @@ import { RedisService } from './Services/redis.service.js';
 import { AuthGoogleService } from './Services/googleAuthservice.js';
 import { AuthController } from './controllers/auth.controller.js';
 import { AuthService } from './Services/auth.service.js';
+import { JwtAuthGuard } from './Guards/jwt.guard.js'; 
 
 @Module({
   imports: [
@@ -16,7 +17,7 @@ import { AuthService } from './Services/auth.service.js';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, RedisService, AuthGoogleService],
-  exports: [AuthService, AuthGoogleService, RedisService],
+  providers: [AuthService, RedisService, AuthGoogleService, JwtAuthGuard], 
+  exports: [AuthService, AuthGoogleService, RedisService, JwtModule],
 })
 export class AuthModule {}

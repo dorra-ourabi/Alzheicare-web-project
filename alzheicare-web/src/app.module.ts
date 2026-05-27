@@ -12,14 +12,16 @@ import { DashboardModule } from './dashboard/dashboard.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { StripeModule } from './stripe/stripe.module.js';
+import { NotificationModule } from './notification/notification.module.js';
 
 @Module({
   imports: [
-    ConfigModule.forRoot(),
+    ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
     UsersModule,
     AuthModule,
     InvitationModule,
+    NotificationModule,
     CalendarModule,
     MailModule,
     ChatModule,

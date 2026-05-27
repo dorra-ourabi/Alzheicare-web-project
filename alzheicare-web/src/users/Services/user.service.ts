@@ -11,9 +11,10 @@ import { CreateUserDto } from '../DTOs/createUserDto.js';
 import { MailService } from '../../mail/mail.service.js';
 import { UserRole } from '../../../generated/prisma/client.js';
 import { OnEvent } from '@nestjs/event-emitter';
-import type { Checkout } from 'stripe';
+import Stripe from 'stripe';
 
-type CheckoutSession = Checkout.Session;
+
+type CheckoutSession = Stripe.Checkout.Session;
 
 @Injectable()
 export class UserService {
@@ -41,27 +42,48 @@ export class UserService {
     const emailVerificationExpiresAt = new Date(
       Date.now() + 24 * 60 * 60 * 1000,
     );
+    const role = user.role || UserRole.Patient; 
+
 
     try {
       const newUser = await this.prisma.user.create({
-        data: {
-          username: user.username!,
-          firstName: user.firstName!,
-          secondName: user.secondName!,
-          email: user.email!,
-          password: hashedPassword,
-          role: user.role || UserRole.Patient,
-          emailVerificationToken,
-          emailVerificationExpiresAt,
-          isEmailVerified: false,
-        },
-        select: {
-          email: true,
-          username: true,
-        },
-      });
+      data: {
+        username: user.username!,
+        firstName: user.firstName!,
+        secondName: user.secondName!,
+        email: user.email!,
+        password: hashedPassword,
+        role,
+        emailVerificationToken,
+        emailVerificationExpiresAt,
+        isEmailVerified: false,
+      },
+      select: {
+        id: true,
+        email: true,
+        username: true,
+        role: true,
+      },
+    });
 
-      return newUser;
+    if (role === UserRole.Doctor) {
+    await this.prisma.doctor.upsert({
+      where: { userId: newUser.id },
+      update: {},
+      create: { 
+        userId: newUser.id,
+        licenceNumber: user.licenceNumber,
+      },
+    });
+} else {
+      await this.prisma.patient.upsert({
+        where: { userId: newUser.id },
+        update: {},
+        create: { userId: newUser.id },
+      });
+    }
+
+    return newUser;
     } catch (e) {
       console.error('Error creating user:', e);
       throw new ConflictException(

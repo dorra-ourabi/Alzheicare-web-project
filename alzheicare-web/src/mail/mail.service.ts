@@ -71,8 +71,8 @@ export class MailService {
 
   async sendOnboardingInvitationEmail(doctorEmail: string, patientUser: any, token: string, message?: string) {
     const baseUrl = this.config.get<string>('APP_URL') ?? 'https://alzheicare.com';
-    const acceptUrl = `${baseUrl}/register?role=doctor&invitationToken=${token}`;
-    const declineUrl = `${baseUrl}/invitation/decline?token=${token}`;
+    const acceptUrl = `${baseUrl}/doctor/auth?invitationToken=${token}`;
+    const declineUrl = `${baseUrl}/invitations/respond-via-token/public?token=${token}&action=REJECTED`;
     const html = `
       <div style="font-family: Arial, sans-serif;">
         <h2>Your patient invites you to join AlzheiCare</h2>
