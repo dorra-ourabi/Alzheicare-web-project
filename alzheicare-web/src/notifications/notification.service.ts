@@ -3,7 +3,11 @@ import { MailerService } from '@nestjs-modules/mailer';
 import { EventEmitter } from 'events';
 import { Observable, fromEvent, map } from 'rxjs';
 import { PrismaService } from '../prisma/prisma.service.js';
-import type { CalendarEvent, Notification, NotificationType } from '../../generated/prisma/client.js';
+import type {
+  CalendarEvent,
+  Notification,
+  NotificationType,
+} from '../../generated/prisma/client.js';
 
 type NotificationPayload = {
   id: number;
@@ -12,7 +16,7 @@ type NotificationPayload = {
   title: string;
   body?: string | null;
   isRead: boolean;
-  referenceId?: number | null;
+  referenceId?: string | null;
   referenceType?: string | null;
   createdAt: string;
   readAt?: string | null;
@@ -34,7 +38,10 @@ export class NotificationService {
   ) {}
 
   subscribe(userId: number): Observable<NotificationEvent> {
-    return fromEvent<Notification>(this.eventEmitter, `notification.push:${userId}`).pipe(
+    return fromEvent<Notification>(
+      this.eventEmitter,
+      `notification.push:${userId}`,
+    ).pipe(
       map((notification) => ({
         type: 'notification:new',
         notification: this.toPayload(notification),
@@ -104,7 +111,7 @@ export class NotificationService {
     type: string,
     title: string,
     body?: string,
-    referenceId?: number,
+    referenceId?: string,
     referenceType?: string,
   ) {
     const created = await this.prisma.notification.create({
@@ -137,7 +144,9 @@ export class NotificationService {
           <p>This is an automated reminder from AlzheiCare.</p>
         `,
       });
-      this.logger.log(`Reminder sent to ${userEmail} for event: ${event.title}`);
+      this.logger.log(
+        `Reminder sent to ${userEmail} for event: ${event.title}`,
+      );
     } catch (error) {
       this.logger.error(`Failed to send reminder to ${userEmail}:`, error);
       throw error;
@@ -152,8 +161,8 @@ export class NotificationService {
       title: notification.title,
       body: notification.body ?? null,
       isRead: notification.isRead,
-      referenceId: notification.referenceId ?? null,
-      referenceType: notification.referenceType ?? null,
+      referenceId: notification.referenceId,
+      referenceType: notification.referenceType,
       createdAt: notification.createdAt.toISOString(),
       readAt: notification.readAt ? notification.readAt.toISOString() : null,
     };
