@@ -84,8 +84,23 @@ export default function DoctorNotifications() {
   const [filter, setFilter] = useState<Filter>("all");
   const { token } = useAuth();
 
-  const handleConnectTelegram = () => {
-    window.open("https://t.me/YourBotUsername?start=test", "_blank");
+  const handleConnectTelegram = async () => {
+    try {
+      const res = await fetch("http://localhost:3000/telegram/link");
+      if (!res.ok) {
+        throw new Error("Failed to fetch Telegram link");
+      }
+
+      const data = await res.json();
+      const url = data?.url;
+      if (!url) {
+        throw new Error("Telegram URL missing from response");
+      }
+
+      window.open(url, "_blank");
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   useEffect(() => {
