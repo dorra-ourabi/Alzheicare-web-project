@@ -102,17 +102,36 @@ export class InvitationService {
     }));
   }
 
-  async respondToInvitation(doctorId: number, invitationId: number, dto: RespondInvitationDto) {
-    const invitation = await this.prisma.invitation.findUnique({ where: { id: invitationId }, include: { patient: { include: { user: true } }, doctor: { include: { user: true } } } });
+  async respondToInvitation(doctorUserId: number, invitationId: number, dto: RespondInvitationDto) {
+    const doctorProfile = await this.prisma.doctor.findUnique({
+      where: { userId: doctorUserId },
+      include: { user: true },
+    });
+    if (!doctorProfile) throw new ForbiddenException('Not authorized to respond to this invitation');
+
+    const invitation = await this.prisma.invitation.findUnique({
+      where: { id: invitationId },
+      include: { patient: { include: { user: true } }, doctor: { include: { user: true } } },
+    });
     if (!invitation) throw new NotFoundException('Invitation not found');
     if (invitation.status !== 'PENDING') throw new ConflictException('Invitation is not pending');
-    if (invitation.doctorId !== doctorId) throw new ForbiddenException('Not authorized to respond to this invitation');
+    if (invitation.doctorId !== doctorProfile.id) {
+      throw new ForbiddenException('Not authorized to respond to this invitation');
+    }
 
-    const updated = await this.prisma.invitation.update({ where: { id: invitationId }, data: { status: dto.status as any, respondedAt: new Date() } });
+    const updated = await this.prisma.invitation.update({
+      where: { id: invitationId },
+      data: { status: dto.status as any, respondedAt: new Date() },
+    });
 
     if (dto.status === RespondStatus.ACCEPTED) {
-      await this.prisma.patient.update({ where: { id: invitation.patientId }, data: { doctorId } });
-      const conversation = await this.prisma.conversation.create({ data: { patientId: invitation.patientId, doctorId } });
+      await this.prisma.patient.update({
+        where: { id: invitation.patientId },
+        data: { doctorId: doctorProfile.id },
+      });
+      const conversation = await this.prisma.conversation.create({
+        data: { patientId: invitation.patientId, doctorId: doctorProfile.id },
+      });
 
       if (invitation.doctor?.user) {
         try {
@@ -128,35 +147,56 @@ export class InvitationService {
         }
       }
 
-      this.eventEmitter.emit('notification.invitation_accepted', { toUserId: invitation.patient.userId, conversationId: conversation.id });
+      this.eventEmitter.emit('notification.invitation_accepted', {
+        toUserId: invitation.patient.userId,
+        conversationId: conversation.id,
+      });
+      return { invitation: updated, conversationId: conversation.id };
     } else {
       try {
         await this.mailService.sendInvitationRejectedEmail(invitation.patient.user, invitation.doctor?.user);
       } catch (err) {
         this.eventEmitter.emit('webhook.email.failed', { to: invitation.patient.user.email, err });
       }
-      this.eventEmitter.emit('notification.invitation_rejected', { toUserId: invitation.patient.userId, invitationId });
+      this.eventEmitter.emit('notification.invitation_rejected', {
+        toUserId: invitation.patient.userId,
+        invitationId,
+      });
     }
 
-    return updated;
+    return { invitation: updated };
   }
 
-  async respondViaToken(token: string, doctorId: number, action: RespondStatus) {
+  async respondViaToken(token: string, doctorUserId: number, action: RespondStatus) {
     const invitation = await this.prisma.invitation.findUnique({ where: { token }, include: { patient: { include: { user: true } } } });
     if (!invitation) throw new NotFoundException('Invitation not found');
     if (invitation.status !== 'PENDING') throw new ConflictException('Invitation is not pending');
 
-    await this.prisma.invitation.update({ where: { id: invitation.id }, data: { doctorId } });
+    const doctorProfile = await this.prisma.doctor.findUnique({
+      where: { userId: doctorUserId },
+    });
+    if (!doctorProfile) throw new ForbiddenException('Not authorized to respond to this invitation');
 
-    return this.respondToInvitation(doctorId, invitation.id, { status: action } as RespondInvitationDto);
+    await this.prisma.invitation.update({
+      where: { id: invitation.id },
+      data: { doctorId: doctorProfile.id },
+    });
+
+    return this.respondToInvitation(doctorUserId, invitation.id, { status: action } as RespondInvitationDto);
   }
 
   async getMyInvitations(userId: number, role: string) {
     if (role === 'Patient') {
-      return this.prisma.invitation.findMany({ where: { patientId: userId }, include: { doctor: { include: { user: true } } } });
+      return this.prisma.invitation.findMany({
+        where: { patient: { userId } },
+        include: { doctor: { include: { user: true } } },
+      });
     }
 
     // Doctor
-    return this.prisma.invitation.findMany({ where: { doctorId: userId }, include: { patient: { include: { user: true } } } });
+    return this.prisma.invitation.findMany({
+      where: { doctor: { userId } },
+      include: { patient: { include: { user: true } } },
+    });
   }
 }

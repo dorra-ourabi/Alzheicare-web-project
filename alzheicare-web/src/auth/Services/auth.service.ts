@@ -168,6 +168,16 @@ export class AuthService {
     }
   }
 
+  async verifyAccessToken(token: string): Promise<{ sub: number; username: string; role: UserRole; sessionId: string }> {
+    try {
+      return await this.jwtService.verifyAsync(token, {
+        secret: this.accessSecret(),
+      });
+    } catch {
+      throw new UnauthorizedException('Invalid access token');
+    }
+  }
+
   private async storeRefreshHash(sessionId: string, refreshToken: string) {
     const ttlSeconds = this.refreshExpires();
     await this.redisService.set(
