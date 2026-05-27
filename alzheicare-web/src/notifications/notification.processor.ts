@@ -47,6 +47,14 @@ export class NotificationProcessor extends WorkerHost {
         where: { id: event.id },
         data: { notificationSent: true },
       });
+      await this.notificationService.createNotification(
+        event.userId,
+        'CALENDAR_REMINDER',
+        `Reminder: ${event.title}`,
+        `Starts at ${event.startTime.toLocaleString()}.`,
+        undefined,
+        'calendarEvent',
+      );
       this.logger.log(`Notification sent for event ${event.id}`);
     } catch (error) {
       this.logger.error(`Failed to send notification for event ${event.id}: ${this.errorMessage(error)}`);

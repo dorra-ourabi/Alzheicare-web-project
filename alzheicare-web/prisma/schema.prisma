@@ -41,6 +41,7 @@ model User {
   googleCalendarChannelExpiresAt BigInt?
 
   events                       CalendarEvent[]
+  notifications                Notification[]
 }
 
 model Doctor {
@@ -104,4 +105,32 @@ model CalendarEvent {
 
   @@index([userId])
   @@index([startTime])
+}
+
+enum NotificationType {
+  NEW_MESSAGE
+  INVITATION_RECEIVED
+  INVITATION_ACCEPTED
+  INVITATION_REJECTED
+  CALENDAR_REMINDER
+  MEDICATION_DUE
+  SYSTEM
+}
+
+model Notification {
+  id            Int               @id @default(autoincrement())
+  userId        Int
+  type          NotificationType
+  title         String
+  body          String?
+  isRead        Boolean           @default(false)
+  referenceId   Int?
+  referenceType String?
+  createdAt     DateTime          @default(now())
+  readAt        DateTime?
+
+  user          User              @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([createdAt])
 }
