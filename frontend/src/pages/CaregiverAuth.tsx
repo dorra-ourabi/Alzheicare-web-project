@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useSearchParams } from 'react-router-dom'
 import { GoogleLogin } from '@react-oauth/google'
 import { useAuth } from '../context/AuthContext'
-import { loginUser, registerUser, googleLogin as apiGoogleLogin } from '../api/auth'
+import { loginUser, createPatient, decodeToken, googleLogin as apiGoogleLogin } from '../api/auth'
 import logo from '../assets/logo_alzheicare.png'
 
 type Tab = 'login' | 'register'
@@ -15,6 +15,7 @@ export default function CaregiverAuth() {
   const [password, setPassword] = useState('')
   const [fullName, setFullName] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [info, setInfo] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const navigate = useNavigate()
   const { login } = useAuth()
@@ -22,6 +23,7 @@ export default function CaregiverAuth() {
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setError(null)
+    setInfo(null)
     setLoading(true)
 
     try {
@@ -31,9 +33,19 @@ export default function CaregiverAuth() {
           setLoading(false)
           return
         }
-        const [firstName, lastName] = fullName.split(' ')
-        await registerUser(username, email, password, firstName || fullName, lastName || '')
-        navigate(`/register?role=caregiver&registered=true`)
+        const parts = fullName.trim().split(/\s+/)
+        const firstName = parts[0] || fullName
+        const lastName = parts.slice(1).join(' ') || firstName
+        const result = await createPatient({
+          username,
+          email,
+          password,
+          firstName,
+          lastName,
+        })
+        setInfo(result.message)
+        setPassword('')
+        setTab('login')
       } else {
         if (!username.trim() || !password.trim()) {
           setError('Username and password are required')
@@ -41,10 +53,11 @@ export default function CaregiverAuth() {
           return
         }
         const response = await loginUser(username, password)
+        const payload = decodeToken(response.accessToken)
         login(response.accessToken, {
-          id: String(response.user.id),
-          name: response.user.username,
-          email: response.user.email,
+          id: String(payload.sub),
+          name: payload.username,
+          email: '',
           role: 'caregiver',
         })
         navigate('/caregiver/dashboard')
@@ -67,10 +80,11 @@ export default function CaregiverAuth() {
     setLoading(true)
     try {
       const response = await apiGoogleLogin(credentialResponse.credential)
+      const payload = decodeToken(response.accessToken)
       login(response.accessToken, {
-        id: String(response.user.id),
-        name: response.user.username || 'User',
-        email: response.user.email,
+        id: String(payload.sub),
+        name: payload.username || 'User',
+        email: '',
         role: 'caregiver',
       })
       navigate('/caregiver/patient-form')
@@ -134,6 +148,12 @@ export default function CaregiverAuth() {
           {error && (
             <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-600">
               {error}
+            </div>
+          )}
+
+          {info && (
+            <div className="mb-4 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-sm text-emerald-700">
+              {info}
             </div>
           )}
 
@@ -289,13 +309,6 @@ export default function CaregiverAuth() {
             className="w-full text-center text-xs text-gray-400 mt-6 hover:text-gray-600 transition"
           >
             ← Back to portal selection
-          </button>
-
-          <button
-            onClick={() => navigate('/register?role=caregiver')}
-            className="w-full text-center text-xs text-blue-600 mt-2 hover:text-blue-800 transition"
-          >
-            Don't have an account? Register
           </button>
         </div>
       </div>

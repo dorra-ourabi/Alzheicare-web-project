@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -48,6 +49,10 @@ export class AuthService {
       throw new UnauthorizedException('Unauthorized');
     }
 
+    if (!user.isEmailVerified) {
+      throw new ForbiddenException('Please verify your email before logging in');
+    }
+
     const sessionId = randomUUID();
     const tokens = await this.buildTokens(user, sessionId);
 
@@ -91,7 +96,7 @@ export class AuthService {
     return tokens;
   }
 
-  async register(dto: CreateUserDto): Promise<AuthTokensDto> {
+  async register(dto: CreateUserDto): Promise<{ success: true; message: string }> {
     if (!dto.password) {
       throw new BadRequestException('Password is required');
     }
@@ -133,13 +138,21 @@ export class AuthService {
       },
     });
 
-    await this.mailService.sendVerificationEmail(user, emailVerificationToken);
+    // Log the verification link so dev can verify locally even if SMTP isn't set up.
+    const baseUrl = this.configService.get<string>('APP_URL') ?? 'http://localhost:3000';
+    console.log(`[register] verification url for ${user.email}: ${baseUrl}/auth/verify-email?token=${emailVerificationToken}`);
 
-    const sessionId = randomUUID();
-    const tokens = await this.buildTokens(user, sessionId);
-    await this.storeRefreshHash(sessionId, tokens.refreshToken);
+    try {
+      await this.mailService.sendVerificationEmail(user, emailVerificationToken);
+    } catch (err) {
+      // Don't block registration if SMTP is misconfigured; the verification link is logged above.
+      console.warn('[register] sendVerificationEmail failed:', err instanceof Error ? err.message : err);
+    }
 
-    return tokens;
+    return {
+      success: true,
+      message: 'Account created. Check your email to verify your account before logging in.',
+    };
   }
 
   async verifyEmail(token: string): Promise<{ success: true }> {
