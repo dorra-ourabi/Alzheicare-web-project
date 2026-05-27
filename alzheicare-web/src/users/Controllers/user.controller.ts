@@ -7,10 +7,12 @@ import {
   ParseIntPipe,
   Post,
   Put,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import { CreateUserDto } from '../DTOs/createUserDto.js';
-import { LoginCredentialsDto } from '../DTOs/LoginCredentialsDto.js';
+import { CreatePatientDto } from '../DTOs/createPatientDto.js';
+import { CreateDoctorDto } from '../DTOs/createDoctorDto.js';
 import { UserService } from '../Services/user.service.js';
 import { JwtAuthGuard } from '../../auth/Guards/jwt.guard.js';
 
@@ -24,6 +26,20 @@ export class UserController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get('doctors')
+  getDoctors() {
+    return this.userService.findDoctors();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('me')
+  getMe(@Req() req: any) {
+    return this.userService.findMe(req.user.sub);
+  }
+ 
+
+
+  @UseGuards(JwtAuthGuard)
   @Get(':id')
   getUserById(@Param('id', ParseIntPipe) id: number) {
     return this.userService.findOne(id);
@@ -32,6 +48,16 @@ export class UserController {
   @Post('add')
   SubscribeUser(@Body() createUserDto: CreateUserDto) {
     return this.userService.create(createUserDto);
+  }
+
+  @Post('patients')
+  createPatient(@Body() createPatientDto: CreatePatientDto) {
+    return this.userService.createPatient(createPatientDto);
+  }
+
+  @Post('doctors')
+  createDoctor(@Body() createDoctorDto: CreateDoctorDto) {
+    return this.userService.createDoctor(createDoctorDto);
   }
 
   @UseGuards(JwtAuthGuard)

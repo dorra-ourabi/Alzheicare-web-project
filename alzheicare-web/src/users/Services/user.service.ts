@@ -8,6 +8,8 @@ import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
 import { JwtService } from '@nestjs/jwt';
 import { CreateUserDto } from '../DTOs/createUserDto.js';
+import { CreatePatientDto } from '../DTOs/createPatientDto.js';
+import { CreateDoctorDto } from '../DTOs/createDoctorDto.js';
 import { MailService } from '../../mail/mail.service.js';
 import { UserRole } from '../../../generated/prisma/client.js';
 import { OnEvent } from '@nestjs/event-emitter';
@@ -27,11 +29,116 @@ export class UserService {
     return this.prisma.user.findMany({ where: { deletedAt: null } });
   }
 
+  async findDoctors() {
+    const doctors = await this.prisma.doctor.findMany({
+      include: {
+        user: true,
+      },
+      orderBy: {
+        user: {
+          firstName: 'asc',
+        },
+      },
+    });
+
+    return doctors.map((doctor) => ({
+      id: doctor.id,
+      userId: doctor.userId,
+      firstName: doctor.user.firstName,
+      secondName: doctor.user.secondName,
+      username: doctor.user.username,
+      email: doctor.user.email,
+      specialization: doctor.specialization,
+      licenceNumber: doctor.licenceNumber,
+      isOnline: false,
+    }));
+  }
+
+  async findMe(userId: number) {
+    return this.prisma.user.findFirst({
+      where: { id: userId, deletedAt: null },
+      include: {
+        doctor: {
+          include: {
+            user: true,
+            patients: {
+              include: { user: true },
+            },
+            conversations: {
+              include: {
+                doctor: { include: { user: true } },
+                patient: { include: { user: true } },
+                messages: {
+                  orderBy: { sentAt: 'asc' },
+                },
+              },
+            },
+          },
+        },
+        patient: {
+          include: {
+            user: true,
+            doctor: {
+              include: {
+                user: true,
+              },
+            },
+            conversations: {
+              include: {
+                doctor: { include: { user: true } },
+                patient: { include: { user: true } },
+                messages: {
+                  orderBy: { sentAt: 'asc' },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+  }
+
   async findOne(id: number) {
     return this.prisma.user.findFirst({ where: { id, deletedAt: null } });
   }
 
   async create(user: CreateUserDto) {
+    const created = await this.createBaseUser(user, user.role || UserRole.Patient);
+    return {
+      email: created.email,
+      username: created.username,
+      firstName: created.firstName,
+    };
+  }
+
+  async createPatient(user: CreatePatientDto) {
+    const created = await this.createBaseUser(user, UserRole.Patient);
+
+    await this.prisma.patient.create({
+      data: {
+        userId: created.id,
+        phoneNumber: user.phoneNumber,
+      },
+    });
+
+    return created;
+  }
+
+  async createDoctor(user: CreateDoctorDto) {
+    const created = await this.createBaseUser(user, UserRole.Doctor);
+
+    await this.prisma.doctor.create({
+      data: {
+        userId: created.id,
+        licenceNumber: user.licenceNumber,
+        specialization: user.specialization,
+      },
+    });
+
+    return created;
+  }
+
+  private async createBaseUser(user: CreateUserDto, role: UserRole) {
     if (!user.password) {
       throw new Error('Password is required!');
     }
@@ -50,15 +157,18 @@ export class UserService {
           secondName: user.secondName!,
           email: user.email!,
           password: hashedPassword,
-          role: user.role || UserRole.Patient,
+          role,
           emailVerificationToken,
           emailVerificationExpiresAt,
           isEmailVerified: false,
         },
         select: {
+          id: true,
           email: true,
           username: true,
           firstName: true,
+          secondName: true,
+          role: true,
         },
       });
 

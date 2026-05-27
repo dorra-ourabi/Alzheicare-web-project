@@ -6,6 +6,7 @@ import { AuthModule } from '../auth/auth.module.js';
 import { MailModule } from '../mail/mail.module.js';
 
 @Module({
+  
   imports: [PrismaModule, AuthModule, MailModule],
   providers: [ChatGateway, ChatService],
 })
