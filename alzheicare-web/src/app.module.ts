@@ -6,6 +6,7 @@ import { UsersModule } from './users/users.module.js';
 import { InvitationModule } from './invitation/invitation.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { CalendarModule } from './calendar/calendar.module.js';
+import { NotificationsModule } from './notifications/notifications.module.js';
 import { MailModule } from './mail/mail.module.js';
 import { TelegramModule } from './telegram/telegram.module.js';
 import { ChatModule } from './chat/chat.module.js';
@@ -22,6 +23,7 @@ import { StripeModule } from './stripe/stripe.module.js';
     AuthModule,
     InvitationModule,
     CalendarModule,
+    NotificationsModule,
     MailModule,
     TelegramModule,
     ChatModule,

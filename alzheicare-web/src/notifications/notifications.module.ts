@@ -1,16 +1,28 @@
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { JwtModule } from '@nestjs/jwt';
 import { MailModule } from '../mail/mail.module.js';
 import { TelegramModule } from '../telegram/telegram.module.js';
 import { NotificationProcessor } from './notification.processor.js';
 import { NotificationSchedulerService } from './notification-scheduler.service.js';
 import { NotificationService } from './notification.service.js';
 import { NOTIFICATIONS_QUEUE } from './notifications.constant.js';
+import { NotificationsController } from './notifications.controller.js';
+import { PrismaModule } from '../prisma/prisma.module.js';
 
 @Module({
   imports: [
     ConfigModule,
+    PrismaModule,
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        secret: configService.get<string>('JWT_ACCESS_SECRET') || 'dev_access_secret',
+        signOptions: { expiresIn: '15m' },
+      }),
+    }),
     MailModule,
     TelegramModule,
     BullModule.forRootAsync({
@@ -42,11 +54,8 @@ import { NOTIFICATIONS_QUEUE } from './notifications.constant.js';
     }),
     BullModule.registerQueue({ name: NOTIFICATIONS_QUEUE }),
   ],
-  providers: [
-    NotificationService,
-    NotificationSchedulerService,
-    NotificationProcessor,
-  ],
+  controllers: [NotificationsController],
+  providers: [NotificationService, NotificationSchedulerService, NotificationProcessor],
   exports: [NotificationSchedulerService, NotificationService],
 })
 export class NotificationsModule {}

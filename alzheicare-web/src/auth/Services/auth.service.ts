@@ -26,7 +26,7 @@ export class AuthService {
     private readonly redisService: RedisService,
     private readonly authGoogleService: AuthGoogleService,
   ) {}
-  //this funnctioon returns double tokens (access and refresh) when the user logs in with his credentials
+//this funnctioon returns double tokens (access and refresh) when the user logs in with his credentials
   async login(loginDto: LoginCredentialsDto): Promise<AuthTokensDto> {
     const user = await this.prisma.user.findUnique({
       where: { username: loginDto.username },

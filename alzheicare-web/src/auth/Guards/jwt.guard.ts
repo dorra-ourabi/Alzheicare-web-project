@@ -11,6 +11,11 @@ export class JwtAuthGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
+    if (this.isBypassEnabled()) {
+      request.user = { sub: this.getBypassUserId() };
+      return true;
+    }
+
     const token = this.extractToken(request);
 
     if (!token) {
@@ -27,6 +32,18 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     return true;
+  }
+
+  private isBypassEnabled(): boolean {
+    return (this.configService.get<string>('BYPASS_AUTH') || '').toLowerCase() === 'true';
+  }
+
+  private getBypassUserId(): number {
+    const bypassUserId = Number(this.configService.get<string>('BYPASS_USER_ID'));
+    if (!bypassUserId) {
+      throw new UnauthorizedException('Invalid bypass user');
+    }
+    return bypassUserId;
   }
 
   private extractToken(request: any): string | null {

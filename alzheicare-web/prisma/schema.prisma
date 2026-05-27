@@ -32,6 +32,8 @@ model User {
 
   sentMessages ChatMessage[]
   messages     Message[]
+  events       CalendarEvent[]
+  notifications Notification[]
 
   telegramChatId   String? @unique
   stripeCustomerId String? @unique
@@ -43,9 +45,6 @@ model User {
   googleCalendarResourceId       String?
   googleCalendarSyncToken        String?
   googleCalendarChannelExpiresAt BigInt?
-
-  events        CalendarEvent[]
-  notifications Notification[]
 }
 
 model Doctor {
@@ -87,6 +86,60 @@ model ChatMessage {
   sender User @relation(fields: [senderId], references: [id])
 }
 
+enum CalendarCategory {
+  medicine
+  appointment
+  mundane
+}
+
+model CalendarEvent {
+  id                String   @id @default(uuid())
+  title             String
+  description       String?
+  startTime         DateTime
+  endTime           DateTime
+  googleEventId     String?
+  seriesId          String?
+  notifyBefore      Int      @default(30)
+  category          CalendarCategory @default(appointment)
+  repeatDaily       Boolean  @default(false)
+  repeatUntil       DateTime?
+  notificationSent  Boolean  @default(false)
+
+  userId            Int
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([startTime])
+}
+
+enum NotificationType {
+  NEW_MESSAGE
+  INVITATION_RECEIVED
+  INVITATION_ACCEPTED
+  INVITATION_REJECTED
+  CALENDAR_REMINDER
+  MEDICATION_DUE
+  SYSTEM
+}
+
+model Notification {
+  id            Int               @id @default(autoincrement())
+  userId        Int
+  type          NotificationType
+  title         String
+  body          String?
+  isRead        Boolean           @default(false)
+  referenceId   Int?
+  referenceType String?
+  createdAt     DateTime          @default(now())
+  readAt        DateTime?
+
+  user          User              @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([createdAt])
+}
 model Invitation {
   id          Int              @id @default(autoincrement())
   patientId   Int
@@ -143,56 +196,4 @@ enum MessageStatus {
   SENT
   DELIVERED
   READ
-}
-
-enum CalendarCategory {
-  medicine
-  appointment
-  mundane
-}
-
-model CalendarEvent {
-  id               String           @id @default(uuid())
-  title            String
-  description      String?
-  startTime        DateTime
-  endTime          DateTime
-  googleEventId    String?
-  seriesId         String?
-  notifyBefore     Int              @default(30)
-  category         CalendarCategory @default(appointment)
-  repeatDaily      Boolean          @default(false)
-  repeatUntil      DateTime?
-  notificationSent Boolean          @default(false)
-
-  userId Int
-  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([startTime])
-}
-
-model Notification {
-  id            Int              @id @default(autoincrement())
-  userId        Int
-  type          NotificationType
-  title         String
-  body          String?
-  isRead        Boolean          @default(false)
-  referenceId   String? // Using String because CalendarEvent ID is a UUID
-  referenceType String?
-  createdAt     DateTime         @default(now())
-  readAt        DateTime?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-}
-
-enum NotificationType {
-  NEW_MESSAGE
-  INVITATION_RECEIVED
-  INVITATION_ACCEPTED
-  INVITATION_REJECTED
-  CALENDAR_REMINDER
-  MEDICATION_DUE
-  SYSTEM
 }

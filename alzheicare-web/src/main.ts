@@ -21,6 +21,7 @@ async function bootstrap() {
     allowedHeaders: ['Content-Type', 'Authorization'],
   });
 
+  // Global validation
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -29,14 +30,17 @@ async function bootstrap() {
     }),
   );
 
+  // Swagger setup
   const config = new DocumentBuilder()
     .setTitle('Alzheicare API')
     .setDescription('API documentation')
     .setVersion('1.0')
     .build();
+
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api', app, document);
 
   await app.listen(process.env.PORT ?? 3000);
 }
+
 bootstrap();

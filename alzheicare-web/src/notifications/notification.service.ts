@@ -1,12 +1,128 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { MailerService } from '@nestjs-modules/mailer';
-import type { CalendarEvent } from '../../generated/prisma/client.js';
+import { EventEmitter } from 'events';
+import { Observable, fromEvent, map } from 'rxjs';
+import { PrismaService } from '../prisma/prisma.service.js';
+import type { CalendarEvent, Notification, NotificationType } from '../../generated/prisma/client.js';
+
+type NotificationPayload = {
+  id: number;
+  userId: number;
+  type: NotificationType;
+  title: string;
+  body?: string | null;
+  isRead: boolean;
+  referenceId?: number | null;
+  referenceType?: string | null;
+  createdAt: string;
+  readAt?: string | null;
+};
+
+type NotificationEvent = {
+  type: 'notification:new';
+  notification: NotificationPayload;
+};
 
 @Injectable()
 export class NotificationService {
   private readonly logger = new Logger('NotificationService');
+  private readonly eventEmitter = new EventEmitter();
 
-  constructor(private mailerService: MailerService) {}
+  constructor(
+    private mailerService: MailerService,
+    private prisma: PrismaService,
+  ) {}
+
+  subscribe(userId: number): Observable<NotificationEvent> {
+    return fromEvent<Notification>(this.eventEmitter, `notification.push:${userId}`).pipe(
+      map((notification) => ({
+        type: 'notification:new',
+        notification: this.toPayload(notification),
+      })),
+    );
+  }
+
+  async listForUser(userId: number) {
+    const notifications = await this.prisma.notification.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+
+    return notifications.map((notification) => this.toPayload(notification));
+  }
+
+  async getUnreadCount(userId: number) {
+    const unreadCount = await this.prisma.notification.count({
+      where: { userId, isRead: false },
+    });
+
+    return { unreadCount };
+  }
+
+  async markRead(userId: number, id: number) {
+    const notification = await this.prisma.notification.findFirst({
+      where: { id, userId },
+    });
+
+    if (!notification) {
+      throw new NotFoundException('Notification not found');
+    }
+
+    const updated = await this.prisma.notification.update({
+      where: { id },
+      data: { isRead: true, readAt: new Date() },
+    });
+
+    return this.toPayload(updated);
+  }
+
+  async markAllRead(userId: number) {
+    const result = await this.prisma.notification.updateMany({
+      where: { userId, isRead: false },
+      data: { isRead: true, readAt: new Date() },
+    });
+
+    return { updated: result.count };
+  }
+
+  async delete(userId: number, id: number) {
+    const notification = await this.prisma.notification.findFirst({
+      where: { id, userId },
+    });
+
+    if (!notification) {
+      throw new NotFoundException('Notification not found');
+    }
+
+    await this.prisma.notification.delete({ where: { id } });
+    return { deleted: true };
+  }
+
+  async createNotification(
+    userId: number,
+    type: string,
+    title: string,
+    body?: string,
+    referenceId?: number,
+    referenceType?: string,
+  ) {
+    const created = await this.prisma.notification.create({
+      data: {
+        userId,
+        type: type as any,
+        title,
+        body,
+        referenceId,
+        referenceType,
+      },
+    });
+
+    this.eventEmitter.emit(`notification.push:${userId}`, created);
+    this.eventEmitter.emit('notification.created', created);
+
+    return created;
+  }
 
   async sendReminder(event: CalendarEvent, userEmail: string) {
     try {
@@ -26,5 +142,20 @@ export class NotificationService {
       this.logger.error(`Failed to send reminder to ${userEmail}:`, error);
       throw error;
     }
+  }
+
+  private toPayload(notification: Notification): NotificationPayload {
+    return {
+      id: notification.id,
+      userId: notification.userId,
+      type: notification.type,
+      title: notification.title,
+      body: notification.body ?? null,
+      isRead: notification.isRead,
+      referenceId: notification.referenceId ?? null,
+      referenceType: notification.referenceType ?? null,
+      createdAt: notification.createdAt.toISOString(),
+      readAt: notification.readAt ? notification.readAt.toISOString() : null,
+    };
   }
 }

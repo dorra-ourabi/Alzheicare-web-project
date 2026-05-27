@@ -53,30 +53,24 @@ export class NotificationProcessor extends WorkerHost {
         this.logger.warn(`Event ${event.id} has no user email`);
       } else {
         await this.notificationService.sendReminder(event, event.user.email);
-        await this.prisma.calendarEvent.update({
-          where: { id: event.id },
-          data: { notificationSent: true },
-        });
-        this.logger.log(`Notification sent for event ${event.id}`);
       }
-    } catch (error) {
-      this.logger.error(
-        `Failed to send email reminder for event ${event.id}: ${this.errorMessage(error)}`,
-      );
-    }
 
-    try {
-      await this.prisma.notification.create({
-        data: {
-          userId: event.userId,
-          type: 'CALENDAR_REMINDER',
-          title: `Reminder: ${event.title}`,
-          referenceId: event.id,
-        },
+      await this.prisma.calendarEvent.update({
+        where: { id: event.id },
+        data: { notificationSent: true },
       });
+      await this.notificationService.createNotification(
+        event.userId,
+        'CALENDAR_REMINDER',
+        `Reminder: ${event.title}`,
+        `Starts at ${event.startTime.toLocaleString()}.`,
+        undefined,
+        'calendarEvent',
+      );
+      this.logger.log(`Notification sent for event ${event.id}`);
     } catch (error) {
       this.logger.error(
-        `Failed to create notification record for event ${event.id}: ${this.errorMessage(error)}`,
+        `Failed to process reminder for event ${event.id}: ${this.errorMessage(error)}`,
       );
     }
 
