@@ -3,7 +3,11 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { NotificationService } from './notification.service.js';
-import { NOTIFICATION_JOB, NOTIFICATIONS_QUEUE } from './notifications.constant.js';
+import { TelegramService } from '../telegram/telegram.service.js';
+import {
+  NOTIFICATION_JOB,
+  NOTIFICATIONS_QUEUE,
+} from './notifications.constant.js';
 
 @Processor(NOTIFICATIONS_QUEUE)
 export class NotificationProcessor extends WorkerHost {
@@ -12,6 +16,7 @@ export class NotificationProcessor extends WorkerHost {
   constructor(
     private prisma: PrismaService,
     private notificationService: NotificationService,
+    private telegramService: TelegramService,
   ) {
     super();
   }
@@ -27,7 +32,9 @@ export class NotificationProcessor extends WorkerHost {
     });
 
     if (!event) {
-      this.logger.warn(`Event ${job.data.eventId} not found for notification job`);
+      this.logger.warn(
+        `Event ${job.data.eventId} not found for notification job`,
+      );
       return;
     }
 
@@ -36,21 +43,55 @@ export class NotificationProcessor extends WorkerHost {
       return;
     }
 
-    if (!event.user?.email) {
-      this.logger.warn(`Event ${event.id} has no user email`);
+    if (!event.user) {
+      this.logger.warn(`Event ${event.id} has no user`);
       return;
     }
 
     try {
-      await this.notificationService.sendReminder(event, event.user.email);
-      await this.prisma.calendarEvent.update({
-        where: { id: event.id },
-        data: { notificationSent: true },
-      });
-      this.logger.log(`Notification sent for event ${event.id}`);
+      if (!event.user.email) {
+        this.logger.warn(`Event ${event.id} has no user email`);
+      } else {
+        await this.notificationService.sendReminder(event, event.user.email);
+        await this.prisma.calendarEvent.update({
+          where: { id: event.id },
+          data: { notificationSent: true },
+        });
+        this.logger.log(`Notification sent for event ${event.id}`);
+      }
     } catch (error) {
-      this.logger.error(`Failed to send notification for event ${event.id}: ${this.errorMessage(error)}`);
-      throw error;
+      this.logger.error(
+        `Failed to send email reminder for event ${event.id}: ${this.errorMessage(error)}`,
+      );
+    }
+
+    try {
+      await this.prisma.notification.create({
+        data: {
+          userId: event.userId,
+          type: 'CALENDAR_REMINDER',
+          title: `Reminder: ${event.title}`,
+          referenceId: event.id,
+        },
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to create notification record for event ${event.id}: ${this.errorMessage(error)}`,
+      );
+    }
+
+    try {
+      if (event.user.telegramChatId) {
+        const message = `Reminder: ${event.title}\nStarts at: ${event.startTime.toLocaleString()}`;
+        await this.telegramService.sendMessage(
+          event.user.telegramChatId,
+          message,
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        `Failed to send Telegram reminder for event ${event.id}: ${this.errorMessage(error)}`,
+      );
     }
   }
 

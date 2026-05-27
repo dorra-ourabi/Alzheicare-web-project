@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MailModule } from '../mail/mail.module.js';
+import { TelegramModule } from '../telegram/telegram.module.js';
 import { NotificationProcessor } from './notification.processor.js';
 import { NotificationSchedulerService } from './notification-scheduler.service.js';
 import { NotificationService } from './notification.service.js';
@@ -11,6 +12,7 @@ import { NOTIFICATIONS_QUEUE } from './notifications.constant.js';
   imports: [
     ConfigModule,
     MailModule,
+    TelegramModule,
     BullModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -40,7 +42,11 @@ import { NOTIFICATIONS_QUEUE } from './notifications.constant.js';
     }),
     BullModule.registerQueue({ name: NOTIFICATIONS_QUEUE }),
   ],
-  providers: [NotificationService, NotificationSchedulerService, NotificationProcessor],
+  providers: [
+    NotificationService,
+    NotificationSchedulerService,
+    NotificationProcessor,
+  ],
   exports: [NotificationSchedulerService, NotificationService],
 })
 export class NotificationsModule {}

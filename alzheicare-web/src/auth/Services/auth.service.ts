@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -50,7 +49,11 @@ export class AuthService {
     }
 
     const sessionId = randomUUID();
-    return this.buildAuthResponse(user, sessionId);
+    const tokens = await this.buildTokens(user, sessionId);
+
+    await this.storeRefreshHash(sessionId, tokens.refreshToken);
+
+    return tokens;
   }
 
   async googleLogin(loginDto: AuthGoogleLoginDto): Promise<AuthTokensDto> {
@@ -117,7 +120,10 @@ export class AuthService {
       throw new UnauthorizedException('User not found');
     }
 
-    return this.buildAuthResponse(user, sessionId);
+    const tokens = await this.buildTokens(user, sessionId);
+    await this.storeRefreshHash(sessionId, tokens.refreshToken);
+
+    return tokens;
   }
 
   async logout(dto: RefreshTokenDto): Promise<{ success: true }> {
@@ -130,57 +136,6 @@ export class AuthService {
       }
     }
     return { success: true };
-  }
-
-  async googleLogin(dto: GoogleLoginDto): Promise<AuthResponseDto> {
-    const googleClientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
-    if (!googleClientId) {
-      throw new BadRequestException('GOOGLE_CLIENT_ID is not configured');
-    }
-
-    const client = new OAuth2Client(googleClientId);
-    const ticket = await client.verifyIdToken({
-      idToken: dto.idToken,
-      audience: googleClientId,
-    });
-
-    const payload = ticket.getPayload();
-    const email = payload?.email;
-    if (!email) {
-      throw new BadRequestException('Google token payload is missing email');
-    }
-
-    let user = await this.prisma.user.findUnique({ where: { email } });
-
-    if (!user) {
-      const baseUsername = (email.split('@')[0] || 'user').toLowerCase();
-      const username = await this.ensureUniqueUsername(baseUsername);
-      const firstName =
-        payload?.given_name || payload?.name?.split(' ')[0] || 'Google';
-      const secondName =
-        payload?.family_name ||
-        payload?.name?.split(' ').slice(1).join(' ') ||
-        'User';
-      const hashedPassword = await bcrypt.hash(
-        randomBytes(32).toString('hex'),
-        10,
-      );
-
-      user = await this.prisma.user.create({
-        data: {
-          username,
-          firstName,
-          secondName,
-          email,
-          password: hashedPassword,
-          role: UserRole.Patient,
-          isEmailVerified: true,
-        },
-      });
-    }
-
-    const sessionId = randomUUID();
-    return this.buildAuthResponse(user, sessionId);
   }
 
   private async buildTokens(
@@ -216,36 +171,6 @@ export class AuthService {
     );
 
     return { accessToken, refreshToken };
-  }
-
-  private async buildAuthResponse(
-    user: any,
-    sessionId: string,
-  ): Promise<AuthResponseDto> {
-    const tokens = await this.buildTokens(user, sessionId);
-    await this.storeRefreshHash(sessionId, tokens.refreshToken);
-
-    return {
-      ...tokens,
-      user: {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        role: user.role,
-      },
-    };
-  }
-
-  private async ensureUniqueUsername(baseUsername: string) {
-    let username = baseUsername;
-    let suffix = 0;
-
-    while (await this.prisma.user.findUnique({ where: { username } })) {
-      suffix += 1;
-      username = `${baseUsername}${suffix}`;
-    }
-
-    return username;
   }
 
   private async verifyRefreshToken(
