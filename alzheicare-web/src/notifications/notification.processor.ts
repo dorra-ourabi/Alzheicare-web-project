@@ -22,6 +22,8 @@ export class NotificationProcessor extends WorkerHost {
   }
 
   async process(job: Job<{ eventId: string }>) {
+    this.logger.log(`[Worker] Demarrage du traitement du job ${job.id}`);
+
     if (job.name !== NOTIFICATION_JOB) {
       return;
     }
@@ -76,10 +78,17 @@ export class NotificationProcessor extends WorkerHost {
 
     try {
       if (event.user.telegramChatId) {
+        this.logger.log(
+          `[Worker] Envoi du message Telegram au chat ${event.user.telegramChatId}`,
+        );
         const message = `Reminder: ${event.title}\nStarts at: ${event.startTime.toLocaleString()}`;
         await this.telegramService.sendMessage(
           event.user.telegramChatId,
           message,
+        );
+      } else {
+        this.logger.warn(
+          `[Worker] Aucun telegramChatId pour l'utilisateur ${event.user.id}`,
         );
       }
     } catch (error) {

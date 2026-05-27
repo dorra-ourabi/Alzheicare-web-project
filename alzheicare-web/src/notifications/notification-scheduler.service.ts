@@ -2,7 +2,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import type { CalendarEvent } from '../../generated/prisma/client.js';
-import { NOTIFICATION_JOB, NOTIFICATIONS_QUEUE } from './notifications.constant.js';
+import {
+  NOTIFICATION_JOB,
+  NOTIFICATIONS_QUEUE,
+} from './notifications.constant.js';
 
 @Injectable()
 export class NotificationSchedulerService {
@@ -20,6 +23,10 @@ export class NotificationSchedulerService {
       return;
     }
 
+    this.logger.log(
+      `[Scheduler] Ajout du rappel dans BullMQ pour l'evenement ${event.id}`,
+    );
+
     await this.queue.add(
       NOTIFICATION_JOB,
       { eventId: event.id },
@@ -33,7 +40,9 @@ export class NotificationSchedulerService {
       },
     );
 
-    this.logger.debug(`Scheduled notification job for event ${event.id} in ${delayMs}ms`);
+    this.logger.debug(
+      `Scheduled notification job for event ${event.id} in ${delayMs}ms`,
+    );
   }
 
   async rescheduleEventNotification(event: CalendarEvent) {
@@ -46,7 +55,9 @@ export class NotificationSchedulerService {
       await this.queue.remove(eventId);
       this.logger.debug(`Cancelled notification job for event ${eventId}`);
     } catch (error) {
-      this.logger.warn(`Failed to cancel notification job for event ${eventId}: ${this.errorMessage(error)}`);
+      this.logger.warn(
+        `Failed to cancel notification job for event ${eventId}: ${this.errorMessage(error)}`,
+      );
     }
   }
 
