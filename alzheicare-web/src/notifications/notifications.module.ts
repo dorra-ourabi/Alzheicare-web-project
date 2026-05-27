@@ -19,7 +19,8 @@ import { PrismaModule } from '../prisma/prisma.module.js';
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_ACCESS_SECRET') || 'dev_access_secret',
+        secret:
+          configService.get<string>('JWT_ACCESS_SECRET') || 'dev_access_secret',
         signOptions: { expiresIn: '15m' },
       }),
     }),
@@ -55,7 +56,11 @@ import { PrismaModule } from '../prisma/prisma.module.js';
     BullModule.registerQueue({ name: NOTIFICATIONS_QUEUE }),
   ],
   controllers: [NotificationsController],
-  providers: [NotificationService, NotificationSchedulerService, NotificationProcessor],
+  providers: [
+    NotificationService,
+    NotificationSchedulerService,
+    NotificationProcessor,
+  ],
   exports: [NotificationSchedulerService, NotificationService],
 })
 export class NotificationsModule {}
