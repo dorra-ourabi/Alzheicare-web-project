@@ -2,41 +2,81 @@ import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/co
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
-import { createHash, randomUUID } from 'crypto';
+import { createHash, randomBytes, randomUUID } from 'crypto';
 
 import { LoginCredentialsDto } from '../../users/DTOs/LoginCredentialsDto.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { RefreshTokenDto } from '../DTOs/RefreshTokenDto.js';
 import { AuthTokensDto } from '../DTOs/AuthTokenDto.js';
+import { RedisService } from './redis.service.js';
+import { AuthGoogleLoginDto } from '../DTOs/AuthGoogleLoginDto.js';
+import { AuthGoogleService } from './googleAuthservice.js';
+import { UserRole } from '../../../generated/prisma/client.js';
 
 @Injectable()
 export class AuthService {
-  private sessions = new Map<string, string>(); 
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly redisService: RedisService,
+    private readonly authGoogleService: AuthGoogleService,
   ) {}
-
+//this funnctioon returns double tokens (access and refresh) when the user logs in with his credentials
   async login(loginDto: LoginCredentialsDto): Promise<AuthTokensDto> {
     const user = await this.prisma.user.findUnique({ where: { username: loginDto.username } });
 
     if (!user) {
-      throw new NotFoundException('Invalid username');
+      throw new NotFoundException('Invalid user');
     }
 
     if (!loginDto.password || !user.password) {
-      throw new NotFoundException('Invalid username or password.');
+      throw new UnauthorizedException('provide a password!');
     }
 
     const isPasswordValid = await bcrypt.compare(loginDto.password, user.password);
     if (!isPasswordValid) {
-      throw new NotFoundException('Invalid Password.');
+      throw new UnauthorizedException('Unauthorized');
     }
 
     const sessionId = randomUUID();
     const tokens = await this.buildTokens(user, sessionId);
 
+    await this.storeRefreshHash(sessionId, tokens.refreshToken);
+
+    return tokens;
+  }
+
+  async googleLogin(loginDto: AuthGoogleLoginDto): Promise<AuthTokensDto> {
+    const profile = await this.authGoogleService.getProfileByToken(loginDto);
+
+    if (!profile.email) {
+      throw new UnauthorizedException('Google account has no email');
+    }
+
+    let user = await this.prisma.user.findFirst({
+      where: { email: profile.email, deletedAt: null },
+    });
+
+    if (!user) {
+      const username = await this.generateUniqueUsername(profile.email);
+      const passwordHash = await bcrypt.hash(randomBytes(32).toString('hex'), 10);
+
+      user = await this.prisma.user.create({
+        data: {
+          username,
+          firstName: profile.firstName || 'Google',
+          secondName: profile.lastName || 'User',
+          email: profile.email,
+          password: passwordHash,
+          role: UserRole.Patient,
+          isEmailVerified: true,
+        },
+      });
+    }
+
+    const sessionId = randomUUID();
+    const tokens = await this.buildTokens(user, sessionId);
     await this.storeRefreshHash(sessionId, tokens.refreshToken);
 
     return tokens;
@@ -48,8 +88,18 @@ export class AuthService {
     const sessionId = payload.sessionId;
     const userId = payload.sub;
 
-    const storedHash = this.sessions.get(sessionId);
-    if (!storedHash || storedHash !== this.hashToken(dto.refreshToken)) {
+    const sessionKey = this.sessionKey(sessionId);
+    const [storedHash, ttlSeconds] = await Promise.all([
+      this.redisService.get(sessionKey),
+      this.redisService.ttl(sessionKey),
+    ]);
+
+    if (!storedHash || ttlSeconds <= 0) {
+      await this.redisService.del(sessionKey);
+      throw new UnauthorizedException('Session expired');
+    }
+
+    if (storedHash !== this.hashToken(dto.refreshToken)) {
       throw new UnauthorizedException('Invalid refresh token');
     }
 
@@ -65,14 +115,20 @@ export class AuthService {
   }
 
   async logout(dto: RefreshTokenDto): Promise<{ success: true }> {
-    const payload = await this.verifyRefreshToken(dto.refreshToken);
-    this.sessions.delete(payload.sessionId);
+    try {
+      const payload = await this.verifyRefreshToken(dto.refreshToken);
+      await this.redisService.del(this.sessionKey(payload.sessionId));
+    } catch (error) {
+      if (!(error instanceof UnauthorizedException)) {
+        throw error;
+      }
+    }
     return { success: true };
   }
 
   private async buildTokens(user: any, sessionId: string): Promise<AuthTokensDto> {
     if (!user.id || !user.username || !user.role) {
-      throw new UnauthorizedException('User data incomplete for token generation');
+      throw new UnauthorizedException('Uauthorized');
     }
 
     const accessToken = await this.jwtService.signAsync(
@@ -113,7 +169,31 @@ export class AuthService {
   }
 
   private async storeRefreshHash(sessionId: string, refreshToken: string) {
-    this.sessions.set(sessionId, this.hashToken(refreshToken));
+    const ttlSeconds = this.refreshExpires();
+    await this.redisService.set(
+      this.sessionKey(sessionId),
+      this.hashToken(refreshToken),
+      ttlSeconds,
+    );
+  }
+
+  private async generateUniqueUsername(email: string): Promise<string> {
+    const base = email.split('@')[0]?.toLowerCase() || 'user';
+    const sanitized = base.replace(/[^a-z0-9._-]/g, '') || 'user';
+
+    let candidate = sanitized;
+    let suffix = 1;
+
+    while (await this.prisma.user.findUnique({ where: { username: candidate } })) {
+      candidate = `${sanitized}${suffix}`;
+      suffix += 1;
+    }
+
+    return candidate;
+  }
+
+  private sessionKey(sessionId: string) {
+    return `session:${sessionId}`;
   }
 
   private hashToken(token: string) {
@@ -121,11 +201,11 @@ export class AuthService {
   }
 
   private accessSecret() {
-    return this.configService.get<string>('JWT_ACCESS_SECRET') || 'dev_access_secret';
+    return this.configService.get<string>('JWT_ACCESS_SECRET');
   }
 
   private refreshSecret() {
-    return this.configService.get<string>('JWT_REFRESH_SECRET') || 'dev_refresh_secret';
+    return this.configService.get<string>('JWT_REFRESH_SECRET') ;
   }
 
   private accessExpires() {
