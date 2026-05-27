@@ -51,23 +51,33 @@ export class MailService {
     }
   }
 
-  async sendDoctorInvitationEmail(doctorUser: any, patientUser: any, message?: string) {
-    const url = this.config.get<string>('APP_URL') ?? 'https://alzheicare.com';
-    const html = `
-      <div style="font-family: Arial, sans-serif;">
-        <h2>A patient has invited you on AlzheiCare</h2>
-        <p><strong>${patientUser.firstName} ${patientUser.secondName}</strong> has invited you to connect.</p>
-        ${message ? `<p>Message: ${message}</p>` : ''}
-        <a href="${url}/dashboard" style="display:inline-block;padding:10px 16px;background:#10b981;color:#fff;border-radius:6px;text-decoration:none;">Open dashboard</a>
-      </div>
-    `;
+  async sendDoctorInvitationEmail(doctorUser: any, patientUser: any, invitationId: number, message?: string) {
+  const baseUrl = this.config.get<string>('APP_URL') ?? 'http://localhost:5173';
+  const dashboardUrl = `${baseUrl}/doctor/notifications`;
 
-    try {
-      await this.mailer.sendMail({ to: doctorUser.email, subject: 'A patient has invited you on AlzheiCare', html });
-    } catch (err) {
-      throw new InternalServerErrorException('Failed to send doctor invitation email');
-    }
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 560px; margin: 0 auto;">
+      <h2>A patient has invited you on AlzheiCare</h2>
+      <p><strong>${patientUser.firstName} ${patientUser.secondName}</strong> has invited you to connect.</p>
+      ${message ? `<p>Message: ${message}</p>` : ''}
+      <p>Log in to your dashboard to accept or decline this invitation.</p>
+      <a href="${dashboardUrl}" 
+         style="display:inline-block;padding:10px 16px;background:#10b981;color:#fff;border-radius:6px;text-decoration:none;margin-right:8px;">
+        View Invitation
+      </a>
+    </div>
+  `;
+
+  try {
+    await this.mailer.sendMail({
+      to: doctorUser.email,
+      subject: 'A patient has invited you on AlzheiCare',
+      html,
+    });
+  } catch (err) {
+    throw new InternalServerErrorException('Failed to send doctor invitation email');
   }
+}
 
   async sendOnboardingInvitationEmail(doctorEmail: string, patientUser: any, token: string, message?: string) {
     const baseUrl = this.config.get<string>('APP_URL') ?? 'https://alzheicare.com';

@@ -63,9 +63,7 @@ async respond(
     return this.invitationService.respondViaToken(dto.token, req.user.sub, dto.action);
   }
 
-  // Public endpoint to respond to an invitation via token for simple actions
-  // (e.g., decline from email link). This intentionally does NOT require auth
-  // because onboarding recipients may not have an account yet.
+  
   @Get('respond-via-token/public')
   async respondViaTokenPublic(@Query('token') token: string, @Query('action') action: RespondStatus) {
     return this.invitationService.respondViaTokenPublic(token, action);

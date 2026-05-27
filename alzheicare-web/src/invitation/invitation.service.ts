@@ -41,18 +41,18 @@ export class InvitationService {
       if (!doctor) throw new NotFoundException('Doctor not found');
 
       const invitation = await this.prisma.invitation.create({
-        data: {
-          patientId: patient.id, 
-          doctorId: dto.doctorId,
-          message: dto.message,
-        },
-      });
+  data: {
+    patientId: patient.id, 
+    doctorId: dto.doctorId,
+    message: dto.message,
+  },
+});
 
-      try {
-        await this.mailService.sendDoctorInvitationEmail(doctor.user, patient.user, dto.message);
-      } catch (err) {
-        this.eventEmitter.emit('webhook.email.failed', { to: doctor.user.email, err });
-      }
+try {
+  await this.mailService.sendDoctorInvitationEmail(doctor.user, patient.user, invitation.id, dto.message);
+} catch (err) {
+  this.eventEmitter.emit('webhook.email.failed', { to: doctor.user.email, err });
+}
 
       this.eventEmitter.emit('notification.invitation_received', { toUserId: doctor.userId, invitationId: invitation.id });
       return invitation;
@@ -166,7 +166,6 @@ export class InvitationService {
     return this.respondToInvitation(doctor.id, invitation.id, { status: action } as RespondInvitationDto);
   }
 
-  // Public respond via token for simple actions (only REJECTED is supported publicly)
   async respondViaTokenPublic(token: string, action: RespondStatus) {
     const invitation = await this.prisma.invitation.findUnique({
       where: { token },
@@ -191,7 +190,6 @@ export class InvitationService {
       return updated;
     }
 
-    // For ACCEPTED, redirect users to login/register flow — we don't accept invitations publicly
     throw new ConflictException('Public accept is not supported. Please login to accept the invitation.');
   }
 
