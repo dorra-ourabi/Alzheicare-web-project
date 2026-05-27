@@ -1,10 +1,17 @@
-import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { createHash, randomBytes, randomUUID } from 'crypto';
 
 import { LoginCredentialsDto } from '../../users/DTOs/LoginCredentialsDto.js';
+import { CreateUserDto } from '../../users/DTOs/createUserDto.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { RefreshTokenDto } from '../DTOs/RefreshTokenDto.js';
 import { AuthTokensDto } from '../DTOs/AuthTokenDto.js';
@@ -12,6 +19,7 @@ import { RedisService } from './redis.service.js';
 import { AuthGoogleLoginDto } from '../DTOs/AuthGoogleLoginDto.js';
 import { AuthGoogleService } from './googleAuthservice.js';
 import { UserRole } from '../../../generated/prisma/client.js';
+import { MailService } from '../../mail/mail.service.js';
 
 @Injectable()
 export class AuthService {
@@ -21,6 +29,7 @@ export class AuthService {
     private readonly configService: ConfigService,
     private readonly redisService: RedisService,
     private readonly authGoogleService: AuthGoogleService,
+    private readonly mailService: MailService,
   ) {}
 //this funnctioon returns double tokens (access and refresh) when the user logs in with his credentials
   async login(loginDto: LoginCredentialsDto): Promise<AuthTokensDto> {
@@ -80,6 +89,87 @@ export class AuthService {
     await this.storeRefreshHash(sessionId, tokens.refreshToken);
 
     return tokens;
+  }
+
+  async register(dto: CreateUserDto): Promise<AuthTokensDto> {
+    if (!dto.password) {
+      throw new BadRequestException('Password is required');
+    }
+
+    const existingUser = await this.prisma.user.findFirst({
+      where: {
+        deletedAt: null,
+        OR: [{ email: dto.email }, { username: dto.username }],
+      },
+      select: { id: true },
+    });
+
+    if (existingUser) {
+      throw new ConflictException('Email already exists or username already exists');
+    }
+
+    const hashedPassword = await bcrypt.hash(dto.password, 10);
+    const emailVerificationToken = randomBytes(32).toString('hex');
+    const emailVerificationExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    const user = await this.prisma.user.create({
+      data: {
+        username: dto.username,
+        firstName: dto.firstName,
+        secondName: dto.secondName,
+        email: dto.email,
+        password: hashedPassword,
+        role: dto.role || UserRole.Patient,
+        emailVerificationToken,
+        emailVerificationExpiresAt,
+        isEmailVerified: false,
+      },
+      select: {
+        id: true,
+        username: true,
+        role: true,
+        email: true,
+        firstName: true,
+      },
+    });
+
+    await this.mailService.sendVerificationEmail(user, emailVerificationToken);
+
+    const sessionId = randomUUID();
+    const tokens = await this.buildTokens(user, sessionId);
+    await this.storeRefreshHash(sessionId, tokens.refreshToken);
+
+    return tokens;
+  }
+
+  async verifyEmail(token: string): Promise<{ success: true }> {
+    if (!token) {
+      throw new BadRequestException('Verification token is required');
+    }
+
+    const user = await this.prisma.user.findFirst({
+      where: {
+        emailVerificationToken: token,
+        emailVerificationExpiresAt: { gt: new Date() },
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+
+    if (!user) {
+      throw new BadRequestException('Invalid or expired verification token');
+    }
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        isEmailVerified: true,
+        emailVerificationToken: null,
+        emailVerificationExpiresAt: null,
+      },
+    });
+
+    return { success: true };
   }
 
   async refresh(dto: RefreshTokenDto): Promise<AuthTokensDto> {

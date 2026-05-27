@@ -5,10 +5,12 @@ import { RedisService } from './Services/redis.service.js';
 import { AuthGoogleService } from './Services/googleAuthservice.js';
 import { AuthController } from './controllers/auth.controller.js';
 import { AuthService } from './Services/auth.service.js';
+import { MailModule } from '../mail/mail.module.js';
 
 @Module({
   imports: [
     ConfigModule,
+    MailModule,
     JwtModule.register({
       secret: process.env.JWT_ACCESS_SECRET,
       signOptions: { expiresIn: '15m' },
