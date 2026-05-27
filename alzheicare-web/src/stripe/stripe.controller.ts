@@ -11,6 +11,7 @@ import type { RawBodyRequest } from '@nestjs/common';
 import { StripeService } from './stripe.service.js';
 import { JwtAuthGuard } from '../auth/Guards/jwt.guard.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { CurrentUser } from '../Decorators/currentUser.decorator.js';
 
 @Controller()
 export class StripeController {
@@ -22,43 +23,41 @@ export class StripeController {
   @Post('webhooks/stripe')
   async handleWebhook(
     @Headers('stripe-signature') signature: string,
-    @Req() req: RawBodyRequest<Request>, 
+    @Req() req: RawBodyRequest<Request>,
   ) {
-    // 1. Grab the signature from the headers.
     if (!signature) {
       throw new BadRequestException('Missing stripe-signature header');
     }
 
-    // 2. Grab the raw bytes.
     const rawBody = req.rawBody;
     if (!rawBody) {
       throw new BadRequestException('Missing raw body');
     }
 
-    // 3. Hand the raw data and the signature over to the Service to do the math.
     return this.stripeService.processWebhook(signature, rawBody);
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('stripe/create-checkout-session')
-  async createSession(@Req() req: Request & { user?: { sub?: number; id?: number; email?: string } }) {
-    const userId = req.user?.id ?? req.user?.sub;
+  async createSession(
+    @CurrentUser() user: { sub?: number; id?: number; email?: string },
+  ) {
+    const userId = user?.id ?? user?.sub;
     if (!userId) {
       throw new BadRequestException('Authenticated user id is missing');
     }
 
-    let userEmail = req.user?.email;
+    let userEmail = user?.email;
     if (!userEmail) {
-      const user = await this.prisma.user.findUnique({
+      const dbUser = await this.prisma.user.findUnique({
         where: { id: userId },
         select: { email: true },
       });
 
-      if (!user?.email) {
+      if (!dbUser?.email) {
         throw new BadRequestException('User email not found');
       }
-
-      userEmail = user.email;
+      userEmail = dbUser.email;
     }
 
     return this.stripeService.createCheckoutSession(userId, userEmail);
@@ -66,21 +65,22 @@ export class StripeController {
 
   @UseGuards(JwtAuthGuard)
   @Post('stripe/portal')
-  async createPortal(@Req() req: Request & { user?: { sub?: number; id?: number } }) {
-    const userId = req.user?.id ?? req.user?.sub;
+  async createPortal(@CurrentUser() user: { sub?: number; id?: number }) {
+    const userId = user?.id ?? user?.sub;
     if (!userId) {
       throw new BadRequestException('Authenticated user id is missing');
     }
 
-    const user = await this.prisma.user.findUnique({
+    // Changed 'user' to 'dbUser' here
+    const dbUser = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { stripeCustomerId: true },
     });
 
-    if (!user?.stripeCustomerId) {
+    if (!dbUser?.stripeCustomerId) {
       throw new BadRequestException('No Stripe customer found for this user');
     }
 
-    return this.stripeService.createPortalSession(user.stripeCustomerId);
+    return this.stripeService.createPortalSession(dbUser.stripeCustomerId);
   }
 }
