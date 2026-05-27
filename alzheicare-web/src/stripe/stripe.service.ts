@@ -107,4 +107,19 @@ export class StripeService {
       throw new Error('Could not initiate payment session');
     }
   }
+
+  async createPortalSession(customerId: string) {
+    try {
+      const session = await this.stripe.billingPortal.sessions.create({
+        customer: customerId,
+        return_url: process.env.FRONTEND_URL,
+      });
+
+      return { url: session.url };
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Failed to create portal session: ${message}`);
+      throw new Error('Could not initiate portal session');
+    }
+  }
 }
