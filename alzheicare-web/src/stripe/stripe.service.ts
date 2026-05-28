@@ -22,7 +22,7 @@ export class StripeService {
     }
 
     this.stripe = new Stripe(stripeSecret, {
-      apiVersion: '2026-05-27.dahlia',
+      apiVersion: '2026-04-22.dahlia',
     });
   }
 
