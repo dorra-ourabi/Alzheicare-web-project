@@ -13,7 +13,7 @@ import { CreateDoctorDto } from '../DTOs/createDoctorDto.js';
 import { MailService } from '../../mail/mail.service.js';
 import { UserRole } from '../../../generated/prisma/client.js';
 import { OnEvent } from '@nestjs/event-emitter';
-import type Stripe from 'stripe';
+import Stripe from 'stripe';
 
 type CheckoutSession = Stripe.Checkout.Session;
 
@@ -103,7 +103,10 @@ export class UserService {
   }
 
   async create(user: CreateUserDto) {
-    const created = await this.createBaseUser(user, user.role || UserRole.Patient);
+    const created = await this.createBaseUser(
+      user,
+      user.role || UserRole.Patient,
+    );
     return {
       email: created.email,
       username: created.username,
@@ -148,7 +151,6 @@ export class UserService {
     const emailVerificationExpiresAt = new Date(
       Date.now() + 24 * 60 * 60 * 1000,
     );
-
     try {
       const newUser = await this.prisma.user.create({
         data: {
@@ -172,13 +174,37 @@ export class UserService {
         },
       });
 
-      await this.mailService.sendVerificationEmail(
-        {
-          email: user.email,
-          firstName: user.firstName,
-        },
-        emailVerificationToken,
-      );
+      // Send verification email
+      try {
+        await this.mailService.sendVerificationEmail(
+          {
+            email: user.email,
+            firstName: user.firstName,
+          },
+          emailVerificationToken,
+        );
+      } catch (err) {
+        // log and continue
+        console.error('Failed to send verification email', err);
+      }
+
+      // Ensure doctor/patient profile exists
+      if (role === UserRole.Doctor) {
+        await this.prisma.doctor.upsert({
+          where: { userId: newUser.id },
+          update: {},
+          create: {
+            userId: newUser.id,
+            licenceNumber: (user as any).licenceNumber,
+          },
+        });
+      } else {
+        await this.prisma.patient.upsert({
+          where: { userId: newUser.id },
+          update: {},
+          create: { userId: newUser.id },
+        });
+      }
 
       return newUser;
     } catch (e) {

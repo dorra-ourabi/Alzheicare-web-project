@@ -22,8 +22,8 @@ export class StripeService {
     }
 
     this.stripe = new Stripe(stripeSecret, {
-      apiVersion: '2026-04-22.dahlia',
-    });
+  apiVersion: '2025-02-24.acacia',
+});
   }
 
   async processWebhook(signature: string, rawBody: Buffer) {

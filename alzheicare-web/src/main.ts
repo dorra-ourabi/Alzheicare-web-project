@@ -7,7 +7,7 @@ import { AppModule } from './app.module.js';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
-    rawBody: true, // Enable raw body parsing for Stripe webhooks
+    rawBody: true,
   });
 
   // Enable versioning
