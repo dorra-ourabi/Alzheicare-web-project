@@ -1,13 +1,17 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import Stripe from 'stripe';
+import { PrismaService } from '../prisma/prisma.service.js';
 
 @Injectable()
 export class StripeService {
   private readonly logger = new Logger(StripeService.name);
   private readonly stripe: Stripe;
 
-  constructor(private readonly eventEmitter: EventEmitter2) {
+  constructor(
+    private readonly eventEmitter: EventEmitter2,
+    private readonly prisma: PrismaService,
+  ) {
     const stripeSecret = process.env.STRIPE_SECRET_KEY;
     if (!stripeSecret) {
       throw new Error('Missing STRIPE_SECRET_KEY');
@@ -18,8 +22,8 @@ export class StripeService {
     }
 
     this.stripe = new Stripe(stripeSecret, {
-      apiVersion: '2026-04-22.dahlia',
-    });
+  apiVersion: '2025-02-24.acacia',
+});
   }
 
   async processWebhook(signature: string, rawBody: Buffer) {
@@ -70,23 +74,23 @@ export class StripeService {
     return { received: true };
   }
 
-  async createCheckoutSession(userId: number, userEmail: string) {
+  async createCheckoutSession(userId: number) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user?.email) {
+      throw new BadRequestException('User email not found');
+    }
+
+    const priceId = process.env.STRIPE_PRICE_ID;
+    if (!priceId) {
+      throw new BadRequestException('Missing STRIPE_PRICE_ID');
+    }
+
     try {
       const session = await this.stripe.checkout.sessions.create({
         payment_method_types: ['card'],
         line_items: [
           {
-            price_data: {
-              currency: 'usd',
-              product_data: {
-                name: 'AlzheiCare Premium Plan',
-                description: 'Full access to premium plan',
-              },
-              unit_amount: 1999, // $19.99 in cents
-              recurring: {
-                interval: 'month', // Makes it a recurring subscription
-              },
-            },
+            price: priceId,
             quantity: 1,
           },
         ],
@@ -94,7 +98,7 @@ export class StripeService {
         metadata: {
           userId: userId.toString(),
         },
-        customer_email: userEmail,
+        customer_email: user.email,
         // Where to send the user after they finish paying or cancel
         success_url: `${process.env.FRONTEND_URL}/payment/success`,
         cancel_url: `${process.env.FRONTEND_URL}/payment/cancel`,

@@ -1,10 +1,17 @@
-import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { createHash, randomBytes, randomUUID } from 'crypto';
 
 import { LoginCredentialsDto } from '../../users/DTOs/LoginCredentialsDto.js';
+import { CreateUserDto } from '../../users/DTOs/createUserDto.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { RefreshTokenDto } from '../DTOs/RefreshTokenDto.js';
 import { AuthTokensDto } from '../DTOs/AuthTokenDto.js';
@@ -24,9 +31,11 @@ export class AuthService {
     private readonly authGoogleService: AuthGoogleService,
     private readonly mailService: MailService,
   ) {}
-//this funnctioon returns double tokens (access and refresh) when the user logs in with his credentials
+  //this funnctioon returns double tokens (access and refresh) when the user logs in with his credentials
   async login(loginDto: LoginCredentialsDto): Promise<AuthTokensDto> {
-    const user = await this.prisma.user.findUnique({ where: { username: loginDto.username } });
+    const user = await this.prisma.user.findUnique({
+      where: { username: loginDto.username },
+    });
 
     if (!user) {
       throw new NotFoundException('Invalid user');
@@ -36,7 +45,10 @@ export class AuthService {
       throw new UnauthorizedException('provide a password!');
     }
 
-    const isPasswordValid = await bcrypt.compare(loginDto.password, user.password);
+    const isPasswordValid = await bcrypt.compare(
+      loginDto.password,
+      user.password,
+    );
     if (!isPasswordValid) {
       throw new UnauthorizedException('Unauthorized');
     }
@@ -83,7 +95,10 @@ export class AuthService {
 
     if (!user) {
       const username = await this.generateUniqueUsername(profile.email);
-      const passwordHash = await bcrypt.hash(randomBytes(32).toString('hex'), 10);
+      const passwordHash = await bcrypt.hash(
+        randomBytes(32).toString('hex'),
+        10,
+      );
 
       user = await this.prisma.user.create({
         data: {
@@ -103,6 +118,91 @@ export class AuthService {
     await this.storeRefreshHash(sessionId, tokens.refreshToken);
 
     return tokens;
+  }
+
+  async register(dto: CreateUserDto): Promise<AuthTokensDto> {
+    if (!dto.password) {
+      throw new BadRequestException('Password is required');
+    }
+
+    const existingUser = await this.prisma.user.findFirst({
+      where: {
+        deletedAt: null,
+        OR: [{ email: dto.email }, { username: dto.username }],
+      },
+      select: { id: true },
+    });
+
+    if (existingUser) {
+      throw new ConflictException(
+        'Email already exists or username already exists',
+      );
+    }
+
+    const hashedPassword = await bcrypt.hash(dto.password, 10);
+    const emailVerificationToken = randomBytes(32).toString('hex');
+    const emailVerificationExpiresAt = new Date(
+      Date.now() + 24 * 60 * 60 * 1000,
+    );
+
+    const user = await this.prisma.user.create({
+      data: {
+        username: dto.username,
+        firstName: dto.firstName,
+        secondName: dto.secondName,
+        email: dto.email,
+        password: hashedPassword,
+        role: dto.role || UserRole.Patient,
+        emailVerificationToken,
+        emailVerificationExpiresAt,
+        isEmailVerified: false,
+      },
+      select: {
+        id: true,
+        username: true,
+        role: true,
+        email: true,
+        firstName: true,
+      },
+    });
+
+    await this.mailService.sendVerificationEmail(user, emailVerificationToken);
+
+    const sessionId = randomUUID();
+    const tokens = await this.buildTokens(user, sessionId);
+    await this.storeRefreshHash(sessionId, tokens.refreshToken);
+
+    return tokens;
+  }
+
+  async verifyEmail(token: string): Promise<{ success: true }> {
+    if (!token) {
+      throw new BadRequestException('Verification token is required');
+    }
+
+    const user = await this.prisma.user.findFirst({
+      where: {
+        emailVerificationToken: token,
+        emailVerificationExpiresAt: { gt: new Date() },
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+
+    if (!user) {
+      throw new BadRequestException('Invalid or expired verification token');
+    }
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        isEmailVerified: true,
+        emailVerificationToken: null,
+        emailVerificationExpiresAt: null,
+      },
+    });
+
+    return { success: true };
   }
 
   async refresh(dto: RefreshTokenDto): Promise<AuthTokensDto> {
@@ -149,7 +249,10 @@ export class AuthService {
     return { success: true };
   }
 
-  private async buildTokens(user: any, sessionId: string): Promise<AuthTokensDto> {
+  private async buildTokens(
+    user: any,
+    sessionId: string,
+  ): Promise<AuthTokensDto> {
     if (!user.id || !user.username || !user.role) {
       throw new UnauthorizedException('Uauthorized');
     }
@@ -181,7 +284,9 @@ export class AuthService {
     return { accessToken, refreshToken };
   }
 
-  private async verifyRefreshToken(refreshToken: string): Promise<{ sub: number; sessionId: string }> {
+  private async verifyRefreshToken(
+    refreshToken: string,
+  ): Promise<{ sub: number; sessionId: string }> {
     try {
       return await this.jwtService.verifyAsync(refreshToken, {
         secret: this.refreshSecret(),
@@ -243,7 +348,9 @@ export class AuthService {
     let candidate = sanitized;
     let suffix = 1;
 
-    while (await this.prisma.user.findUnique({ where: { username: candidate } })) {
+    while (
+      await this.prisma.user.findUnique({ where: { username: candidate } })
+    ) {
       candidate = `${sanitized}${suffix}`;
       suffix += 1;
     }
@@ -264,14 +371,14 @@ export class AuthService {
   }
 
   private refreshSecret() {
-    return this.configService.get<string>('JWT_REFRESH_SECRET') ;
+    return this.configService.get<string>('JWT_REFRESH_SECRET');
   }
 
   private accessExpires() {
-    return 15 * 60; 
+    return 15 * 60;
   }
 
   private refreshExpires() {
-    return 7 * 24 * 60 * 60; 
+    return 7 * 24 * 60 * 60;
   }
 }

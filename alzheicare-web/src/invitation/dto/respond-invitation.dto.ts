@@ -1,4 +1,4 @@
-import { IsEnum } from 'class-validator';
+import { IsEnum, IsNotEmpty } from 'class-validator';
 
 export enum RespondStatus {
   ACCEPTED = 'ACCEPTED',
@@ -7,5 +7,6 @@ export enum RespondStatus {
 
 export class RespondInvitationDto {
   @IsEnum(RespondStatus)
+  @IsNotEmpty()
   status: RespondStatus;
 }

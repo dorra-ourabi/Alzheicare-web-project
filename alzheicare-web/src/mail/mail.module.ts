@@ -33,7 +33,9 @@ const templateDir = (() => {
             auth: { user, pass },
           },
           defaults: {
-            from: config.get<string>('MAIL_FROM') || '"AlzheiCare" <noreply@alzheicare.com>',
+            from:
+              config.get<string>('MAIL_FROM') ||
+              '"AlzheiCare" <noreply@alzheicare.com>',
           },
           template: {
             dir: templateDir,
@@ -47,6 +49,6 @@ const templateDir = (() => {
     }),
   ],
   providers: [MailService],
-  exports: [MailService],
+  exports: [MailService, MailerModule],
 })
 export class MailModule {}

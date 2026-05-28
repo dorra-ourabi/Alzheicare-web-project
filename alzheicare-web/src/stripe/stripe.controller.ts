@@ -3,13 +3,13 @@ import {
   Post,
   Headers,
   Req,
-  Body,
   BadRequestException,
+  UseGuards,
 } from '@nestjs/common';
 import type { Request } from 'express';
 import type { RawBodyRequest } from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/Guards/jwt.guard.js';
 import { StripeService } from './stripe.service.js';
-
 
 @Controller('webhooks/stripe')
 export class StripeController {
@@ -18,7 +18,7 @@ export class StripeController {
   @Post()
   async handleWebhook(
     @Headers('stripe-signature') signature: string,
-    @Req() req: RawBodyRequest<Request>, 
+    @Req() req: RawBodyRequest<Request>,
   ) {
     // 1. Grab the signature from the headers.
     if (!signature) {
@@ -36,16 +36,15 @@ export class StripeController {
   }
 
   @Post('create-checkout-session')
+  @UseGuards(JwtAuthGuard)
   async createSession(
-    //TO BE UPDATE AFTER THE IMPLEMENTATION OF THE GUARDS : For now, we accept them in the body for easy testing.
-    @Body('userId') userId: number,
-    @Body('email') email: string,
+    @Req()
+    req: Request & { user?: { sub?: number; id?: number } },
   ) {
-    if (!userId || !email) {
-      throw new BadRequestException('userId and email are required to initiate payment');
+    const userId = Number(req.user?.sub ?? req.user?.id);
+    if (!userId) {
+      throw new BadRequestException('User id is required to initiate payment');
     }
-    return this.stripeService.createCheckoutSession(userId, email);
+    return this.stripeService.createCheckoutSession(userId);
   }
-
-  
 }

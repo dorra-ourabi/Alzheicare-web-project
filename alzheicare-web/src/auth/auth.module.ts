@@ -6,6 +6,7 @@ import { AuthGoogleService } from './Services/googleAuthservice.js';
 import { AuthController } from './controllers/auth.controller.js';
 import { AuthService } from './Services/auth.service.js';
 import { MailModule } from '../mail/mail.module.js';
+import { JwtAuthGuard } from './Guards/jwt.guard.js';
 
 @Module({
   imports: [
@@ -14,11 +15,10 @@ import { MailModule } from '../mail/mail.module.js';
     JwtModule.register({
       secret: process.env.JWT_ACCESS_SECRET,
       signOptions: { expiresIn: '15m' },
-
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, RedisService, AuthGoogleService],
-  exports: [AuthService, AuthGoogleService, RedisService],
+  providers: [AuthService, RedisService, AuthGoogleService, JwtAuthGuard],
+  exports: [AuthService, AuthGoogleService, RedisService, JwtModule],
 })
 export class AuthModule {}
