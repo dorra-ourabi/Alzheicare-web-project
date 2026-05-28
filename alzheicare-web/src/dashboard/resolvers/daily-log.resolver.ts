@@ -1,6 +1,12 @@
 import { Args, Float, Int, Mutation, Query, Resolver } from '@nestjs/graphql';
 import { DashboardService } from '../dashboard.service.js';
-import { DailyLogType, MoodEntryType, WeightRecordType, SleepRecordType, BehaviorEntryType } from '../dto/daily-log.type.js';
+import {
+  DailyLogType,
+  MoodEntryType,
+  WeightRecordType,
+  SleepRecordType,
+  BehaviorEntryType,
+} from '../dto/daily-log.type.js';
 import { CreateDailyLogInput } from '../dto/create-daily-log.input.js';
 
 @Resolver(() => DailyLogType)

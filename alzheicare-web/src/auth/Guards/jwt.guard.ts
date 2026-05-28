@@ -1,4 +1,9 @@
-import { Injectable, CanActivate, ExecutionContext, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  CanActivate,
+  ExecutionContext,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 
@@ -24,7 +29,9 @@ export class JwtAuthGuard implements CanActivate {
 
     try {
       const payload = await this.jwtService.verifyAsync(token, {
-        secret: this.configService.get<string>('JWT_ACCESS_SECRET') || 'dev_access_secret',
+        secret:
+          this.configService.get<string>('JWT_ACCESS_SECRET') ||
+          'dev_access_secret',
       });
       request.user = payload;
     } catch (error) {
@@ -35,11 +42,16 @@ export class JwtAuthGuard implements CanActivate {
   }
 
   private isBypassEnabled(): boolean {
-    return (this.configService.get<string>('BYPASS_AUTH') || '').toLowerCase() === 'true';
+    return (
+      (this.configService.get<string>('BYPASS_AUTH') || '').toLowerCase() ===
+      'true'
+    );
   }
 
   private getBypassUserId(): number {
-    const bypassUserId = Number(this.configService.get<string>('BYPASS_USER_ID'));
+    const bypassUserId = Number(
+      this.configService.get<string>('BYPASS_USER_ID'),
+    );
     if (!bypassUserId) {
       throw new UnauthorizedException('Invalid bypass user');
     }

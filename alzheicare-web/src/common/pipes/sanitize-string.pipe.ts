@@ -4,7 +4,7 @@ import { Injectable, PipeTransform } from '@nestjs/common';
 export class SanitizeStringPipe implements PipeTransform<string, string> {
   transform(value: string): string {
     if (value === undefined || value === null) {
-      return value as unknown as string;
+      return value;
     }
 
     const sanitized = value

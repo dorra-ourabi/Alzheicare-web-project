@@ -1,4 +1,12 @@
-import { IsBoolean, IsDateString, IsIn, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import {
+  IsBoolean,
+  IsDateString,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  Min,
+} from 'class-validator';
 
 const EVENT_CATEGORIES = ['medicine', 'appointment', 'mundane'] as const;
 
@@ -21,7 +29,7 @@ export class UpdateCalendarEventDto {
 
   @IsIn(EVENT_CATEGORIES)
   @IsOptional()
-  category?: typeof EVENT_CATEGORIES[number];
+  category?: (typeof EVENT_CATEGORIES)[number];
 
   @IsInt()
   @Min(1)

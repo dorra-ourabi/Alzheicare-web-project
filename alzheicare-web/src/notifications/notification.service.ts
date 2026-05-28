@@ -16,7 +16,7 @@ type NotificationPayload = {
   title: string;
   body?: string | null;
   isRead: boolean;
-  referenceId?: string | null;
+  referenceId?: number | null;
   referenceType?: string | null;
   createdAt: string;
   readAt?: string | null;
@@ -111,7 +111,7 @@ export class NotificationService {
     type: string,
     title: string,
     body?: string,
-    referenceId?: string,
+    referenceId?: number,
     referenceType?: string,
   ) {
     const created = await this.prisma.notification.create({

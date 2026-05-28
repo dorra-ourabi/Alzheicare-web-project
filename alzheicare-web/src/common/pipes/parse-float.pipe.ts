@@ -7,7 +7,7 @@ export class ParseFloatPipe implements PipeTransform<string, number> {
       throw new BadRequestException('Float value is required');
     }
 
-    const parsed = parseFloat(value as string);
+    const parsed = parseFloat(value);
     if (Number.isNaN(parsed) || !Number.isFinite(parsed)) {
       throw new BadRequestException('Invalid float value');
     }

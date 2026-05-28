@@ -1,5 +1,9 @@
 // src/calendar/calendar.service.ts
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { google } from 'googleapis';
@@ -8,12 +12,15 @@ import type { Credentials, OAuth2Client } from 'google-auth-library';
 import { addDays } from 'date-fns';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service.js';
-import type { CalendarEvent, Prisma, User } from '../../generated/prisma/client.js';
+import type {
+  CalendarEvent,
+  Prisma,
+  User,
+} from '../../generated/prisma/client.js';
 import { CreateCalendarEventDto } from './DTOs/CreateCalendarEventDto.js';
 import { UpdateCalendarEventDto } from './DTOs/UpdateCalendarEventDto.js';
 import { NotificationSchedulerService } from '../notifications/notification-scheduler.service.js';
 import { CalendarUpdatesService } from './calendar-updates.service.js';
-
 
 @Injectable()
 export class CalendarService {
@@ -56,7 +63,9 @@ export class CalendarService {
     const { tokens } = await oauth2Client.getToken(code);
     const payload = await this.verifyOauthState(state);
 
-    const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
+    const user = await this.prisma.user.findUnique({
+      where: { id: payload.sub },
+    });
     if (!user) {
       throw new NotFoundException('User not found');
     }
@@ -80,7 +89,10 @@ export class CalendarService {
       await this.registerGoogleWebhook(payload.sub);
     } catch (error) {
       // Do not block login if webhook registration fails.
-      console.warn('Google webhook registration skipped:', error instanceof Error ? error.message : error);
+      console.warn(
+        'Google webhook registration skipped:',
+        error instanceof Error ? error.message : error,
+      );
     }
 
     return { tokens, userId: payload.sub, role: payload.role };
@@ -93,7 +105,9 @@ export class CalendarService {
     }
 
     if (!user.googleAccessToken || !user.googleRefreshToken) {
-      throw new BadRequestException('Google Calendar is not connected for this user');
+      throw new BadRequestException(
+        'Google Calendar is not connected for this user',
+      );
     }
 
     const webhookUrl = this.configService.get<string>('GOOGLE_WEBHOOK_URL');
@@ -137,7 +151,9 @@ export class CalendarService {
     };
   }
 
-  async handleGoogleWebhook(headers: Record<string, string | string[] | undefined>) {
+  async handleGoogleWebhook(
+    headers: Record<string, string | string[] | undefined>,
+  ) {
     const channelId = this.getHeaderValue(headers, 'x-goog-channel-id');
     const resourceId = this.getHeaderValue(headers, 'x-goog-resource-id');
     const resourceState = this.getHeaderValue(headers, 'x-goog-resource-state');
@@ -178,7 +194,9 @@ export class CalendarService {
     if (user.googleCalendarSyncToken) {
       listParams.syncToken = user.googleCalendarSyncToken;
     } else {
-      listParams.timeMin = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      listParams.timeMin = new Date(
+        Date.now() - 30 * 24 * 60 * 60 * 1000,
+      ).toISOString();
     }
 
     const listResponse = await calendar.events.list(listParams);
@@ -196,18 +214,21 @@ export class CalendarService {
       await this.syncGoogleEvents(user, items);
     }
 
-    this.updatesService.emit(user.id!, 'google');
+    this.updatesService.emit(user.id, 'google');
 
     return { handled: true, items };
   }
 
-  private async syncGoogleEvents(user: User, items: Array<calendar_v3.Schema$Event>) {
+  private async syncGoogleEvents(
+    user: User,
+    items: Array<calendar_v3.Schema$Event>,
+  ) {
     const validItems = items.filter((item) => Boolean(item.id));
     if (validItems.length === 0) {
       return;
     }
 
-    const googleIds = validItems.map((item) => item.id!)
+    const googleIds = validItems.map((item) => item.id!);
     const existingEvents = await this.prisma.calendarEvent.findMany({
       where: {
         googleEventId: { in: googleIds },
@@ -224,7 +245,9 @@ export class CalendarService {
         const existing = existingByGoogleId.get(item.id!);
         if (existing) {
           await this.notificationScheduler.cancelEventNotification(existing.id);
-          await this.prisma.calendarEvent.delete({ where: { id: existing.id } });
+          await this.prisma.calendarEvent.delete({
+            where: { id: existing.id },
+          });
         }
         continue;
       }
@@ -296,7 +319,10 @@ export class CalendarService {
     return { startTime, endTime };
   }
 
-  private getHeaderValue(headers: Record<string, string | string[] | undefined>, key: string) {
+  private getHeaderValue(
+    headers: Record<string, string | string[] | undefined>,
+    key: string,
+  ) {
     const value = headers[key] ?? headers[key.toLowerCase()];
     if (Array.isArray(value)) {
       return value[0];
@@ -311,7 +337,9 @@ export class CalendarService {
     }
 
     if (!user.googleAccessToken || !user.googleRefreshToken) {
-      throw new BadRequestException('Google Calendar is not connected for this user');
+      throw new BadRequestException(
+        'Google Calendar is not connected for this user',
+      );
     }
 
     const now = Date.now();
@@ -325,7 +353,10 @@ export class CalendarService {
       try {
         await this.registerGoogleWebhook(userId);
       } catch (error) {
-        console.warn('Google webhook refresh skipped:', error instanceof Error ? error.message : error);
+        console.warn(
+          'Google webhook refresh skipped:',
+          error instanceof Error ? error.message : error,
+        );
       }
     }
 
@@ -363,7 +394,9 @@ export class CalendarService {
       throw new NotFoundException('User not found');
     }
 
-    const hasGoogleTokens = Boolean(user.googleAccessToken && user.googleRefreshToken);
+    const hasGoogleTokens = Boolean(
+      user.googleAccessToken && user.googleRefreshToken,
+    );
 
     const startTime = new Date(createDto.startTime);
     const endTime = new Date(createDto.endTime);
@@ -376,9 +409,13 @@ export class CalendarService {
     }
 
     const repeatDaily = createDto.repeatDaily ?? false;
-    const repeatUntilRaw = createDto.repeatUntil ? new Date(createDto.repeatUntil) : undefined;
+    const repeatUntilRaw = createDto.repeatUntil
+      ? new Date(createDto.repeatUntil)
+      : undefined;
     if (repeatDaily && !repeatUntilRaw) {
-      throw new BadRequestException('Repeat until date is required for daily repeats');
+      throw new BadRequestException(
+        'Repeat until date is required for daily repeats',
+      );
     }
 
     if (repeatUntilRaw && Number.isNaN(repeatUntilRaw.getTime())) {
@@ -386,17 +423,28 @@ export class CalendarService {
     }
 
     const repeatUntil = repeatUntilRaw
-      ? new Date(repeatUntilRaw.getFullYear(), repeatUntilRaw.getMonth(), repeatUntilRaw.getDate(), 23, 59, 59, 999)
+      ? new Date(
+          repeatUntilRaw.getFullYear(),
+          repeatUntilRaw.getMonth(),
+          repeatUntilRaw.getDate(),
+          23,
+          59,
+          59,
+          999,
+        )
       : undefined;
 
     if (repeatUntil && repeatUntil < startTime) {
-      throw new BadRequestException('Repeat until must be on or after the start date');
+      throw new BadRequestException(
+        'Repeat until must be on or after the start date',
+      );
     }
 
     const durationMs = endTime.getTime() - startTime.getTime();
-    const occurrences = repeatDaily && repeatUntil
-      ? this.buildDailyOccurrences(startTime, durationMs, repeatUntil)
-      : [{ start: startTime, end: endTime }];
+    const occurrences =
+      repeatDaily && repeatUntil
+        ? this.buildDailyOccurrences(startTime, durationMs, repeatUntil)
+        : [{ start: startTime, end: endTime }];
 
     if (occurrences.length > 366) {
       throw new BadRequestException('Too many daily occurrences requested');
@@ -409,9 +457,13 @@ export class CalendarService {
       });
     }
 
-    const calendar = oauth2Client ? google.calendar({ version: 'v3', auth: oauth2Client }) : null;
+    const calendar = oauth2Client
+      ? google.calendar({ version: 'v3', auth: oauth2Client })
+      : null;
     const events: Prisma.CalendarEventCreateInput[] = [];
-    const seriesId = repeatDaily ? createDto.seriesId ?? randomUUID() : undefined;
+    const seriesId = repeatDaily
+      ? (createDto.seriesId ?? randomUUID())
+      : undefined;
 
     for (const occurrence of occurrences) {
       let googleEventId: string | undefined;
@@ -458,7 +510,11 @@ export class CalendarService {
     return savedEvents;
   }
 
-  private buildDailyOccurrences(startTime: Date, durationMs: number, repeatUntil: Date) {
+  private buildDailyOccurrences(
+    startTime: Date,
+    durationMs: number,
+    repeatUntil: Date,
+  ) {
     const occurrences: { start: Date; end: Date }[] = [];
     let cursor = new Date(startTime);
 
@@ -487,8 +543,12 @@ export class CalendarService {
       throw new NotFoundException('Event not found');
     }
 
-    const startTime = updateDto.startTime ? new Date(updateDto.startTime) : event.startTime;
-    const endTime = updateDto.endTime ? new Date(updateDto.endTime) : event.endTime;
+    const startTime = updateDto.startTime
+      ? new Date(updateDto.startTime)
+      : event.startTime;
+    const endTime = updateDto.endTime
+      ? new Date(updateDto.endTime)
+      : event.endTime;
 
     if (Number.isNaN(startTime.getTime()) || Number.isNaN(endTime.getTime())) {
       throw new BadRequestException('Invalid start or end time');
@@ -504,17 +564,31 @@ export class CalendarService {
         orderBy: { startTime: 'asc' },
       });
 
-      const updatedSeries = await this.updateSeriesEvents(seriesEvents, updateDto, userId);
+      const updatedSeries = await this.updateSeriesEvents(
+        seriesEvents,
+        updateDto,
+        userId,
+      );
       this.updatesService.emit(userId, 'local');
       return updatedSeries;
     }
 
-    const updatedEvent = await this.updateSingleEvent(event, updateDto, userId, startTime, endTime);
+    const updatedEvent = await this.updateSingleEvent(
+      event,
+      updateDto,
+      userId,
+      startTime,
+      endTime,
+    );
     this.updatesService.emit(userId, 'local');
     return updatedEvent;
   }
 
-  async deleteEvent(userId: number, eventId: string, scope: 'single' | 'series' = 'single') {
+  async deleteEvent(
+    userId: number,
+    eventId: string,
+    scope: 'single' | 'series' = 'single',
+  ) {
     const event = await this.prisma.calendarEvent.findUnique({
       where: { id: eventId },
     });
@@ -544,10 +618,15 @@ export class CalendarService {
     userId: number,
   ) {
     const hasTimeUpdate = Boolean(updateDto.startTime || updateDto.endTime);
-    const startTime = updateDto.startTime ? new Date(updateDto.startTime) : undefined;
+    const startTime = updateDto.startTime
+      ? new Date(updateDto.startTime)
+      : undefined;
     const endTime = updateDto.endTime ? new Date(updateDto.endTime) : undefined;
 
-    if ((startTime && Number.isNaN(startTime.getTime())) || (endTime && Number.isNaN(endTime.getTime()))) {
+    if (
+      (startTime && Number.isNaN(startTime.getTime())) ||
+      (endTime && Number.isNaN(endTime.getTime()))
+    ) {
       throw new BadRequestException('Invalid start or end time');
     }
 
@@ -560,12 +639,14 @@ export class CalendarService {
     const updates: Prisma.PrismaPromise<CalendarEvent>[] = [];
 
     for (const event of events) {
-      const nextStart = hasTimeUpdate && startTime
-        ? this.mergeDateAndTime(event.startTime, startTime)
-        : event.startTime;
-      const nextEnd = hasTimeUpdate && endTime
-        ? this.mergeDateAndTime(event.endTime, endTime)
-        : event.endTime;
+      const nextStart =
+        hasTimeUpdate && startTime
+          ? this.mergeDateAndTime(event.startTime, startTime)
+          : event.startTime;
+      const nextEnd =
+        hasTimeUpdate && endTime
+          ? this.mergeDateAndTime(event.endTime, endTime)
+          : event.endTime;
 
       if (nextEnd <= nextStart) {
         throw new BadRequestException('End time must be after start time');
@@ -577,9 +658,15 @@ export class CalendarService {
           eventId: event.googleEventId,
           requestBody: {
             ...(updateDto.title ? { summary: updateDto.title } : {}),
-            ...(updateDto.description !== undefined ? { description: updateDto.description } : {}),
-            ...(hasTimeUpdate ? { start: { dateTime: nextStart.toISOString() } } : {}),
-            ...(hasTimeUpdate ? { end: { dateTime: nextEnd.toISOString() } } : {}),
+            ...(updateDto.description !== undefined
+              ? { description: updateDto.description }
+              : {}),
+            ...(hasTimeUpdate
+              ? { start: { dateTime: nextStart.toISOString() } }
+              : {}),
+            ...(hasTimeUpdate
+              ? { end: { dateTime: nextEnd.toISOString() } }
+              : {}),
           },
         });
       }
@@ -592,7 +679,9 @@ export class CalendarService {
             description: updateDto.description ?? event.description,
             startTime: nextStart,
             endTime: nextEnd,
-            ...(updateDto.notifyBefore !== undefined ? { notifyBefore: updateDto.notifyBefore } : {}),
+            ...(updateDto.notifyBefore !== undefined
+              ? { notifyBefore: updateDto.notifyBefore }
+              : {}),
             ...(updateDto.category ? { category: updateDto.category } : {}),
           },
         }),
@@ -623,9 +712,15 @@ export class CalendarService {
         eventId: event.googleEventId,
         requestBody: {
           ...(updateDto.title ? { summary: updateDto.title } : {}),
-          ...(updateDto.description !== undefined ? { description: updateDto.description } : {}),
-          ...(updateDto.startTime ? { start: { dateTime: startTime.toISOString() } } : {}),
-          ...(updateDto.endTime ? { end: { dateTime: endTime.toISOString() } } : {}),
+          ...(updateDto.description !== undefined
+            ? { description: updateDto.description }
+            : {}),
+          ...(updateDto.startTime
+            ? { start: { dateTime: startTime.toISOString() } }
+            : {}),
+          ...(updateDto.endTime
+            ? { end: { dateTime: endTime.toISOString() } }
+            : {}),
         },
       });
     }
@@ -637,7 +732,9 @@ export class CalendarService {
         description: updateDto.description ?? event.description,
         startTime,
         endTime,
-        ...(updateDto.notifyBefore !== undefined ? { notifyBefore: updateDto.notifyBefore } : {}),
+        ...(updateDto.notifyBefore !== undefined
+          ? { notifyBefore: updateDto.notifyBefore }
+          : {}),
         ...(updateDto.category ? { category: updateDto.category } : {}),
       },
     });
@@ -663,7 +760,9 @@ export class CalendarService {
 
     const ids = events.map((event) => event.id);
     if (ids.length > 0) {
-      await this.prisma.calendarEvent.deleteMany({ where: { id: { in: ids } } });
+      await this.prisma.calendarEvent.deleteMany({
+        where: { id: { in: ids } },
+      });
     }
   }
 
@@ -708,9 +807,13 @@ export class CalendarService {
     );
   }
 
-  private async verifyOauthState(state: string): Promise<{ sub: number; role?: string }> {
+  private async verifyOauthState(
+    state: string,
+  ): Promise<{ sub: number; role?: string }> {
     try {
-      const payload = await this.jwtService.verifyAsync(state, { secret: this.accessSecret() });
+      const payload = await this.jwtService.verifyAsync(state, {
+        secret: this.accessSecret(),
+      });
       if (payload?.purpose !== 'calendar_oauth' || !payload?.sub) {
         throw new BadRequestException('Invalid OAuth state');
       }
@@ -721,7 +824,9 @@ export class CalendarService {
   }
 
   private accessSecret() {
-    return this.configService.get<string>('JWT_ACCESS_SECRET') || 'dev_access_secret';
+    return (
+      this.configService.get<string>('JWT_ACCESS_SECRET') || 'dev_access_secret'
+    );
   }
 
   private mergeDateAndTime(date: Date, timeSource: Date) {

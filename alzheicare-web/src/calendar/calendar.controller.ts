@@ -42,11 +42,19 @@ export class CalendarController {
   }
 
   @Get('auth/callback')
-  async googleCallback(@Query('code') code: string, @Query('state') state: string, @Res() res: any) {
+  async googleCallback(
+    @Query('code') code: string,
+    @Query('state') state: string,
+    @Res() res: any,
+  ) {
     const { role } = await this.calendarService.handleCallback(code, state);
     const frontendBase = process.env.FRONTEND_URL || 'http://localhost:5173';
-    const roleSlug = role?.toString().toLowerCase().includes('doctor') ? 'doctor' : 'caregiver';
-    return res.redirect(`${frontendBase}/${roleSlug}/calendar?google=connected`);
+    const roleSlug = role?.toString().toLowerCase().includes('doctor')
+      ? 'doctor'
+      : 'caregiver';
+    return res.redirect(
+      `${frontendBase}/${roleSlug}/calendar?google=connected`,
+    );
   }
 
   @UseGuards(JwtAuthGuard)
@@ -58,7 +66,10 @@ export class CalendarController {
 
   @UseGuards(JwtAuthGuard)
   @Post('events')
-  async createEvent(@Body() createDto: CreateCalendarEventDto, @Req() req: any) {
+  async createEvent(
+    @Body() createDto: CreateCalendarEventDto,
+    @Req() req: any,
+  ) {
     const userId = this.getUserId(req);
     return this.calendarService.createEvent(userId, createDto);
   }
@@ -77,8 +88,9 @@ export class CalendarController {
     const updates$ = this.updatesService
       .subscribe(userId)
       .pipe(map((event) => ({ data: event })));
-    const keepAlive$ = interval(25000)
-      .pipe(map(() => ({ data: { type: 'ping', timestamp: Date.now() } })));
+    const keepAlive$ = interval(25000).pipe(
+      map(() => ({ data: { type: 'ping', timestamp: Date.now() } })),
+    );
 
     return merge(updates$, keepAlive$);
   }
@@ -128,7 +140,9 @@ export class CalendarController {
 
   private resolveStreamUserId(token?: string) {
     if (this.isBypassEnabled()) {
-      const bypassUserId = Number(this.configService.get<string>('BYPASS_USER_ID'));
+      const bypassUserId = Number(
+        this.configService.get<string>('BYPASS_USER_ID'),
+      );
       if (!bypassUserId) {
         throw new UnauthorizedException('Invalid bypass user');
       }
@@ -139,7 +153,9 @@ export class CalendarController {
       throw new UnauthorizedException('Missing token');
     }
 
-    const secret = this.configService.get<string>('JWT_ACCESS_SECRET') || 'dev_access_secret';
+    const secret =
+      this.configService.get<string>('JWT_ACCESS_SECRET') ||
+      'dev_access_secret';
     let payload: any;
     try {
       payload = this.jwtService.verify(token, { secret });
@@ -156,6 +172,9 @@ export class CalendarController {
   }
 
   private isBypassEnabled() {
-    return (this.configService.get<string>('BYPASS_AUTH') || '').toLowerCase() === 'true';
+    return (
+      (this.configService.get<string>('BYPASS_AUTH') || '').toLowerCase() ===
+      'true'
+    );
   }
 }

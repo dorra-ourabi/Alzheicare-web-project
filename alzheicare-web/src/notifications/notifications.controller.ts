@@ -57,9 +57,14 @@ export class NotificationsController {
   }
 
   @Sse('stream')
-  stream(@Query('token') token: string | undefined, @Req() req: any): Observable<MessageEvent> {
+  stream(
+    @Query('token') token: string | undefined,
+    @Req() req: any,
+  ): Observable<MessageEvent> {
     const userId = this.resolveUserId(req, token);
-    return this.notifications.subscribe(userId).pipe(map((payload) => ({ data: payload })));
+    return this.notifications
+      .subscribe(userId)
+      .pipe(map((payload) => ({ data: payload })));
   }
 
   private userIdFromRequest(req: any) {
@@ -72,7 +77,9 @@ export class NotificationsController {
 
   private resolveUserId(req: any, token?: string) {
     if (this.isBypassEnabled()) {
-      const bypassUserId = Number(this.configService.get<string>('BYPASS_USER_ID'));
+      const bypassUserId = Number(
+        this.configService.get<string>('BYPASS_USER_ID'),
+      );
       if (!bypassUserId) {
         throw new UnauthorizedException('Invalid bypass user');
       }
@@ -80,7 +87,9 @@ export class NotificationsController {
     }
 
     const authHeader = req?.headers?.authorization;
-    const headerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
+    const headerToken = authHeader?.startsWith('Bearer ')
+      ? authHeader.slice(7)
+      : undefined;
     const rawToken = token || headerToken;
     if (!rawToken) {
       throw new UnauthorizedException('No token provided');
@@ -88,7 +97,9 @@ export class NotificationsController {
 
     try {
       const payload = this.jwtService.verify(rawToken, {
-        secret: this.configService.get<string>('JWT_ACCESS_SECRET') || 'dev_access_secret',
+        secret:
+          this.configService.get<string>('JWT_ACCESS_SECRET') ||
+          'dev_access_secret',
       });
       const userId = Number(payload?.sub);
       if (!userId) {
@@ -101,6 +112,9 @@ export class NotificationsController {
   }
 
   private isBypassEnabled() {
-    return (this.configService.get<string>('BYPASS_AUTH') || '').toLowerCase() === 'true';
+    return (
+      (this.configService.get<string>('BYPASS_AUTH') || '').toLowerCase() ===
+      'true'
+    );
   }
 }

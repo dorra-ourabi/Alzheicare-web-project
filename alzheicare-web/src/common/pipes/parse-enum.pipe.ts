@@ -2,7 +2,10 @@ import { BadRequestException, Injectable, PipeTransform } from '@nestjs/common';
 
 @Injectable()
 export class ParseEnumPipe<T = any> implements PipeTransform<string, T> {
-  constructor(private readonly enumType: Record<string, any>, private readonly fieldName = 'value') {}
+  constructor(
+    private readonly enumType: Record<string, any>,
+    private readonly fieldName = 'value',
+  ) {}
 
   transform(value: string): T {
     if (value === undefined || value === null || value === '') {

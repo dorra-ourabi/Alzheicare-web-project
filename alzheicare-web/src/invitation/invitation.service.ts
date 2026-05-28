@@ -227,7 +227,7 @@ export class InvitationService {
 
     return this.respondToInvitation(userId, invitation.id, {
       status: action,
-    } as RespondInvitationDto);
+    });
   }
 
   async respondViaTokenPublic(token: string, action: RespondStatus) {

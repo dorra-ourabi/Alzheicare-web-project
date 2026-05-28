@@ -1,4 +1,8 @@
-import { registerDecorator, ValidationOptions, ValidationArguments } from 'class-validator';
+import {
+  registerDecorator,
+  ValidationOptions,
+  ValidationArguments,
+} from 'class-validator';
 
 export function IsDateString(validationOptions?: ValidationOptions) {
   return function (object: object, propertyName: string) {
@@ -17,7 +21,7 @@ export function IsDateString(validationOptions?: ValidationOptions) {
           return !Number.isNaN(parsed.getTime());
         },
         defaultMessage(args: ValidationArguments) {
-          return `${args.property} must be a valid ISO date string`; 
+          return `${args.property} must be a valid ISO date string`;
         },
       },
     });

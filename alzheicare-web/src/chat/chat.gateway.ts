@@ -21,8 +21,9 @@ import { MailService } from '../mail/mail.service.js';
 @WebSocketGateway({
   cors: { origin: '*' },
 })
-export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
-
+export class ChatGateway
+  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
+{
   // The socket.io Server instance — used to emit events to rooms/clients
   @WebSocketServer()
   server!: Server;
@@ -42,7 +43,6 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   // This is the WebSocket equivalent of your HTTP AuthGuard.
   afterInit(server: Server) {
     server.use(async (client: Socket, next) => {
-
       // Extract the JWT token from one of three possible locations the client might send it:
       // 1. socket.io auth object  → preferred: socket.connect({ auth: { token } })
       // 2. URL query param        → fallback:  ws://server?token=xxx
@@ -78,10 +78,10 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
         // client.data persists for the entire lifetime of this connection
         // and is accessible in every event handler via client.data.user.
         client.data.user = {
-          userId:    user.id,
-          username:  user.username,
-          role:      user.role,
-          doctorId:  user.doctor?.id  ?? null,
+          userId: user.id,
+          username: user.username,
+          role: user.role,
+          doctorId: user.doctor?.id ?? null,
           patientId: user.patient?.id ?? null,
         };
 
@@ -104,7 +104,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       // server.emit (no room) → sends to every connected socket
       this.server.emit('userStatus', {
         username: client.data.user.username,
-        role:     client.data.user.role,
+        role: client.data.user.role,
         isOnline: true,
       });
     }
@@ -119,7 +119,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     if (client.data.user) {
       this.server.emit('userStatus', {
         username: client.data.user.username,
-        role:     client.data.user.role,
+        role: client.data.user.role,
         isOnline: false,
       });
     }
@@ -180,8 +180,10 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
 
     // Check that the sender is either the doctor OR the patient of this conversation.
     // Prevents a user from injecting messages into someone else's conversation.
-    const isDoctor  = authUser.doctorId  && conversation.doctorId  === authUser.doctorId;
-    const isPatient = authUser.patientId && conversation.patientId === authUser.patientId;
+    const isDoctor =
+      authUser.doctorId && conversation.doctorId === authUser.doctorId;
+    const isPatient =
+      authUser.patientId && conversation.patientId === authUser.patientId;
     if (!isDoctor && !isPatient) throw new WsException('Forbidden');
 
     const room = this.getRoom(conversation.id);
@@ -199,7 +201,11 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       this.firstMessageNotifyTtlSeconds(),
     );
 
-    if (shouldNotify && conversation.doctor?.user && conversation.patient?.user) {
+    if (
+      shouldNotify &&
+      conversation.doctor?.user &&
+      conversation.patient?.user
+    ) {
       await this.mailService.sendFirstMessageAfterPeriodEmail(
         conversation.doctor.user,
         conversation.patient.user,
@@ -208,18 +214,20 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       );
     }
 
-    console.log(`message in room ${room} from ${authUser.username}: ${content}`);
+    console.log(
+      `message in room ${room} from ${authUser.username}: ${content}`,
+    );
 
     // Broadcast to the ENTIRE room including the sender.
     // server.to(room) = everyone in room (including sender)
     // client.to(room) = everyone in room EXCEPT the sender
     // We use server.to() here so the sender also gets confirmation their message was saved.
     this.server.to(room).emit('message', {
-      id:             message.id,
+      id: message.id,
       conversationId: conversation.id,
-      fromRole:       authUser.role,
-      content:        message.content,
-      at:             message.sentAt.toISOString(),
+      fromRole: authUser.role,
+      content: message.content,
+      at: message.sentAt.toISOString(),
     });
   }
 
@@ -263,7 +271,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     client.to(room).emit('messagesRead', {
       byUser: authUser.username,
       byRole: authUser.role,
-      at:     new Date().toISOString(),
+      at: new Date().toISOString(),
     });
   }
 
@@ -272,7 +280,8 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   // Broadcasts the reaction to everyone in the room including the sender.
   @SubscribeMessage('react')
   async handleReact(
-    @MessageBody() payload: { conversationId: number; messageId: number; emoji: string },
+    @MessageBody()
+    payload: { conversationId: number; messageId: number; emoji: string },
     @ConnectedSocket() client: Socket,
   ) {
     const authUser = client.data.user;
@@ -283,8 +292,8 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     // server.to() → everyone in room including sender
     this.server.to(room).emit('reaction', {
       messageId: payload.messageId,
-      emoji:     payload.emoji,
-      fromUser:  authUser.username,
+      emoji: payload.emoji,
+      fromUser: authUser.username,
     });
   }
 
@@ -309,7 +318,9 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   // Handles the case where the header might be an array (some proxies do this).
   private extractBearerToken(authorization?: string | string[]) {
     if (!authorization) return undefined;
-    const header = Array.isArray(authorization) ? authorization[0] : authorization;
+    const header = Array.isArray(authorization)
+      ? authorization[0]
+      : authorization;
     if (!header?.startsWith('Bearer ')) return undefined;
     return header.slice('Bearer '.length).trim();
   }

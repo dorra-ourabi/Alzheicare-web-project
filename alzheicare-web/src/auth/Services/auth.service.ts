@@ -296,40 +296,19 @@ export class AuthService {
     }
   }
 
-  async verifyAccessToken(token: string): Promise<{ sub: number; username: string; role: UserRole; sessionId: string }> {
+  async verifyAccessToken(token: string): Promise<{
+    sub: number;
+    username: string;
+    role: UserRole;
+    sessionId: string;
+  }> {
     try {
       return await this.jwtService.verifyAsync(token, {
-        secret: this.accessSecret(), 
+        secret: this.accessSecret(),
       });
     } catch {
       throw new UnauthorizedException('Invalid access token');
     }
-  }
-
-  async verifyEmail(token: string): Promise<{ success: true }> {
-    const now = new Date();
-    const user = await this.prisma.user.findFirst({
-      where: {
-        emailVerificationToken: token,
-        emailVerificationExpiresAt: { gt: now },
-        deletedAt: null,
-      },
-    });
-
-    if (!user) {
-      throw new UnauthorizedException('Invalid or expired verification token');
-    }
-
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: {
-        isEmailVerified: true,
-        emailVerificationToken: null,
-        emailVerificationExpiresAt: null,
-      },
-    });
-
-    return { success: true };
   }
 
   private async storeRefreshHash(sessionId: string, refreshToken: string) {

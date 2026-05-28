@@ -16,7 +16,8 @@ import { CalendarUpdatesService } from './calendar-updates.service.js';
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_ACCESS_SECRET') || 'dev_access_secret',
+        secret:
+          configService.get<string>('JWT_ACCESS_SECRET') || 'dev_access_secret',
         signOptions: { expiresIn: '15m' },
       }),
     }),

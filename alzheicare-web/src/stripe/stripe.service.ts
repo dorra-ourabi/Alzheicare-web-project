@@ -6,7 +6,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 @Injectable()
 export class StripeService {
   private readonly logger = new Logger(StripeService.name);
-  private readonly stripe: Stripe;
+  private readonly stripe: any;
 
   constructor(
     private readonly eventEmitter: EventEmitter2,
@@ -22,19 +22,19 @@ export class StripeService {
     }
 
     this.stripe = new Stripe(stripeSecret, {
-  apiVersion: '2025-02-24.acacia',
-});
+      apiVersion: '2026-05-27.dahlia',
+    });
   }
 
   async processWebhook(signature: string, rawBody: Buffer) {
-    let event: Stripe.Event;
+    let event: any;
 
     try {
       // 1. The Math: This function will automatically throw an error if the signature is fake.
       event = this.stripe.webhooks.constructEvent(
         rawBody,
         signature,
-        process.env.STRIPE_WEBHOOK_SECRET as string,
+        process.env.STRIPE_WEBHOOK_SECRET,
       );
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -46,7 +46,7 @@ export class StripeService {
     // 2. Handle the event!
     switch (event.type) {
       case 'checkout.session.completed': {
-        const session = event.data.object as Stripe.Checkout.Session;
+        const session = event.data.object as { id: string };
         this.logger.log(
           `Payment successful for checkout session: ${session.id}`,
         );
@@ -56,7 +56,7 @@ export class StripeService {
       }
 
       case 'customer.subscription.deleted': {
-        const subscription = event.data.object as Stripe.Subscription;
+        const subscription = event.data.object as { customer: string };
         this.logger.log(
           `Subscription canceled for customer: ${subscription.customer}`,
         );

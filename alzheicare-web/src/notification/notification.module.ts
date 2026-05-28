@@ -6,7 +6,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { AuthModule } from '../auth/auth.module.js';
 
 @Module({
-  imports: [PrismaModule,AuthModule],
+  imports: [PrismaModule, AuthModule],
   providers: [NotificationService],
   controllers: [NotificationController],
   exports: [NotificationService],

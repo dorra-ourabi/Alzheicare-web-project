@@ -107,7 +107,7 @@ export class DashboardService {
     });
   }
 
-async createDailyLog(data: CreateDailyLogInput): Promise<DailyLog> {
+  async createDailyLog(data: CreateDailyLogInput): Promise<DailyLog> {
     const { patientId, date, mood, moodNote, behaviors, weightKg, sleep } =
       data;
 

@@ -11,29 +11,29 @@ export class NotificationService {
     private readonly eventEmitter: EventEmitter2,
   ) {}
 
- @OnEvent('notification.invitation_received')
-async handleInvitationReceived(payload: any) {
-  const { toUserId, invitationId } = payload;
+  @OnEvent('notification.invitation_received')
+  async handleInvitationReceived(payload: any) {
+    const { toUserId, invitationId } = payload;
 
-  const invitation = await this.prisma.invitation.findUnique({
-    where: { id: invitationId },
-    include: { patient: { include: { user: true } } },
-  });
+    const invitation = await this.prisma.invitation.findUnique({
+      where: { id: invitationId },
+      include: { patient: { include: { user: true } } },
+    });
 
-  const patientName = invitation
-    ? `${invitation.patient.user.firstName} ${invitation.patient.user.secondName}`
-    : 'A patient';
+    const patientName = invitation
+      ? `${invitation.patient.user.firstName} ${invitation.patient.user.secondName}`
+      : 'A patient';
 
-  const notification = await this.createNotification(
-    toUserId,
-    'INVITATION_RECEIVED',
-    'New invitation received',
-    `${patientName} sent you an invitation to connect.`,
-    invitationId,
-    'Invitation',
-  );
-  await this.createWebhookEvents(notification, 'INVITATION_SENT');
-}
+    const notification = await this.createNotification(
+      toUserId,
+      'INVITATION_RECEIVED',
+      'New invitation received',
+      `${patientName} sent you an invitation to connect.`,
+      invitationId,
+      'Invitation',
+    );
+    await this.createWebhookEvents(notification, 'INVITATION_SENT');
+  }
 
   @OnEvent('notification.invitation_accepted')
   async handleInvitationAccepted(payload: any) {
@@ -103,7 +103,9 @@ async handleInvitationReceived(payload: any) {
   }
 
   async createWebhookEvents(notification: any, trigger: string) {
-    const user = await this.prisma.user.findUnique({ where: { id: notification.userId } });
+    const user = await this.prisma.user.findUnique({
+      where: { id: notification.userId },
+    });
     if (!user) return;
 
     const payload = {

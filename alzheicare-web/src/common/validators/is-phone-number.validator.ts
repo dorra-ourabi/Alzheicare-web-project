@@ -1,4 +1,8 @@
-import { registerDecorator, ValidationOptions, ValidationArguments } from 'class-validator';
+import {
+  registerDecorator,
+  ValidationOptions,
+  ValidationArguments,
+} from 'class-validator';
 
 export function IsPhoneNumber(validationOptions?: ValidationOptions) {
   return function (object: object, propertyName: string) {
@@ -17,7 +21,7 @@ export function IsPhoneNumber(validationOptions?: ValidationOptions) {
           return /^\+?[0-9]{6,15}$/.test(cleaned);
         },
         defaultMessage(args: ValidationArguments) {
-          return `${args.property} must be a valid phone number`; 
+          return `${args.property} must be a valid phone number`;
         },
       },
     });

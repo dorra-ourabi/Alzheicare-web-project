@@ -1,4 +1,12 @@
-import { IsEmail, IsOptional, IsString, IsInt, IsPositive, MaxLength, IsNotEmpty } from 'class-validator';
+import {
+  IsEmail,
+  IsOptional,
+  IsString,
+  IsInt,
+  IsPositive,
+  MaxLength,
+  IsNotEmpty,
+} from 'class-validator';
 import { AtLeastOneField } from '../../common/validators/at-least-one-field.validator.js';
 
 export class CreateInvitationDto {

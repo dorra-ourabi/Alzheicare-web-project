@@ -13,9 +13,8 @@ import { CreateDoctorDto } from '../DTOs/createDoctorDto.js';
 import { MailService } from '../../mail/mail.service.js';
 import { UserRole } from '../../../generated/prisma/client.js';
 import { OnEvent } from '@nestjs/event-emitter';
-import Stripe from 'stripe';
 
-type CheckoutSession = Stripe.Checkout.Session;
+type CheckoutSession = any;
 
 @Injectable()
 export class UserService {
@@ -154,10 +153,10 @@ export class UserService {
     try {
       const newUser = await this.prisma.user.create({
         data: {
-          username: user.username!,
-          firstName: user.firstName!,
-          secondName: user.secondName!,
-          email: user.email!,
+          username: user.username,
+          firstName: user.firstName,
+          secondName: user.secondName,
+          email: user.email,
           password: hashedPassword,
           role,
           emailVerificationToken,

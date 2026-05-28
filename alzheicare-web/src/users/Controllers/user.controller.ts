@@ -39,8 +39,6 @@ export class UserController {
   getMe(@CurrentUser() user: any) {
     return this.userService.findMe(user.sub);
   }
- 
-
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.Admin)
