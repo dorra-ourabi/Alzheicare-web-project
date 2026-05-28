@@ -76,6 +76,12 @@ model Patient {
   conversations     Conversation[]
   chronicDiseases   ChronicDisease[]
   medications       Medication[]
+  allergies         Allergy[]
+  dailyLogs         DailyLog[]
+  moodEntries       MoodEntry[]
+  behaviorEntries   BehaviorEntry[]
+  weightRecords     WeightRecord[]
+  sleepRecords      SleepRecord[]
 }
 
 enum ChronicDiseaseType {
@@ -269,4 +275,114 @@ enum WebhookTrigger {
   NEW_MESSAGE
   CALENDAR_REMINDER
   MEDICATION_DUE
+}
+
+enum MoodLevel {
+  sad
+  anxious
+  neutral
+  good
+  great
+}
+
+enum BehaviorType {
+  aggressiveness
+  withdrawal
+  anxiety
+  repetitive_acts
+}
+
+enum SleepQuality {
+  Poor
+  Fair
+  Good
+  Excellent
+}
+
+model Allergy {
+  id        Int    @id @default(autoincrement())
+  patientId Int
+  name      String
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@map("allergies")
+}
+
+model DailyLog {
+  id        Int      @id @default(autoincrement())
+  patientId Int
+  date      DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  patient         Patient         @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  moodEntry       MoodEntry?
+  weightRecord    WeightRecord?
+  sleepRecord     SleepRecord?
+  behaviorEntries BehaviorEntry[]
+
+  @@unique([patientId, date])
+  @@map("daily_logs")
+}
+
+model MoodEntry {
+  id         Int       @id @default(autoincrement())
+  patientId  Int
+  dailyLogId Int?      @unique
+  date       DateTime
+  mood       MoodLevel
+  notes      String?
+  recordedAt DateTime  @default(now())
+
+  patient  Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  dailyLog DailyLog? @relation(fields: [dailyLogId], references: [id], onDelete: SetNull)
+
+  @@map("mood_entries")
+}
+
+model BehaviorEntry {
+  id         Int          @id @default(autoincrement())
+  patientId  Int
+  dailyLogId Int?
+  date       DateTime
+  behavior   BehaviorType
+  recordedAt DateTime     @default(now())
+
+  patient  Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  dailyLog DailyLog? @relation(fields: [dailyLogId], references: [id], onDelete: SetNull)
+
+  @@map("behavior_entries")
+}
+
+model WeightRecord {
+  id         Int      @id @default(autoincrement())
+  patientId  Int
+  dailyLogId Int?     @unique
+  date       DateTime
+  weightKg   Float
+  recordedAt DateTime @default(now())
+
+  patient  Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  dailyLog DailyLog? @relation(fields: [dailyLogId], references: [id], onDelete: SetNull)
+
+  @@map("weight_records")
+}
+
+model SleepRecord {
+  id         Int          @id @default(autoincrement())
+  patientId  Int
+  dailyLogId Int?         @unique
+  date       DateTime
+  hoursSlept Float
+  quality    SleepQuality
+  bedTime    String?
+  wakeTime   String?
+  notes      String?
+  recordedAt DateTime     @default(now())
+
+  patient  Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  dailyLog DailyLog? @relation(fields: [dailyLogId], references: [id], onDelete: SetNull)
+
+  @@map("sleep_records")
 }
