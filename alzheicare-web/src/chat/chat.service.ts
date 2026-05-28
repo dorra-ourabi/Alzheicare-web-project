@@ -2,9 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 
 interface CreateMessageInput {
-  threadUserId: number;
+  conversationId: number;
   senderId: number;
-  senderRole: string;
   content: string;
 }
 
@@ -13,13 +12,21 @@ export class ChatService {
   constructor(private readonly prisma: PrismaService) {}
 
   async createMessage(input: CreateMessageInput) {
-    return this.prisma.chatMessage.create({
-      data: {
-        threadUserId: input.threadUserId,
-        senderId: input.senderId,
-        senderRole: input.senderRole,
-        content: input.content,
-      },
+    return this.prisma.$transaction(async (tx) => {
+      const message = await tx.message.create({
+        data: {
+          conversationId: input.conversationId,
+          senderId: input.senderId,
+          content: input.content,
+        },
+      });
+
+      await tx.conversation.update({
+        where: { id: input.conversationId },
+        data: { lastMessageAt: new Date() },
+      });
+
+      return message;
     });
   }
 }

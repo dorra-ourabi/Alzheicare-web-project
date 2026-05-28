@@ -7,6 +7,7 @@ import { PrismaModule } from '../prisma/prisma.module.js';
 import { MailModule } from '../mail/mail.module.js';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { JwtAuthGuard } from '../auth/Guards/jwt.guard.js';
+import { RolesGuard } from '../auth/Guards/roles.guard.js';
 
 @Module({
   imports: [
@@ -19,7 +20,7 @@ import { JwtAuthGuard } from '../auth/Guards/jwt.guard.js';
       signOptions: { expiresIn: '15m' },
     }),
   ],
-  providers: [InvitationService, JwtAuthGuard],
+  providers: [InvitationService, JwtAuthGuard, RolesGuard],
   controllers: [InvitationController],
 })
 export class InvitationModule {}

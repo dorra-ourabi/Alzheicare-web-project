@@ -6,7 +6,7 @@ const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
 
 async function seed() {
-  const passwordHash = await bcrypt.hash('Passw0rd!', 10);
+  const passwordHash =  await bcrypt.hash('12345', 10);;
 
   const admin = await prisma.user.upsert({
     where: { email: 'admin@alzheicare.local' },
@@ -152,6 +152,62 @@ async function seed() {
         phoneNumber: patient.phoneNumber,
       },
     });
+  }
+
+  const invitePatientUser = await prisma.user.upsert({
+    where: { email: 'patient.invite@alzheicare.local' },
+    update: {
+      username: 'patient.invite',
+      firstName: 'Lina',
+      secondName: 'Haddad',
+      password: passwordHash,
+      role: UserRole.Patient,
+      isEmailVerified: true,
+      deletedAt: null,
+    },
+    create: {
+      username: 'patient.invite',
+      firstName: 'Lina',
+      secondName: 'Haddad',
+      email: 'patient.invite@alzheicare.local',
+      password: passwordHash,
+      role: UserRole.Patient,
+      isEmailVerified: true,
+    },
+  });
+
+  const invitePatient = await prisma.patient.upsert({
+    where: { userId: invitePatientUser.id },
+    update: {
+      doctorId: null,
+      phoneNumber: '555-0110',
+    },
+    create: {
+      userId: invitePatientUser.id,
+      doctorId: null,
+      phoneNumber: '555-0110',
+    },
+  });
+
+  const inviteDoctorId = doctors[0]?.doctorId;
+  if (inviteDoctorId) {
+    const existingInvite = await prisma.invitation.findFirst({
+      where: {
+        patientId: invitePatient.id,
+        doctorId: inviteDoctorId,
+        status: 'PENDING',
+      },
+    });
+
+    if (!existingInvite) {
+      await prisma.invitation.create({
+        data: {
+          patientId: invitePatient.id,
+          doctorId: inviteDoctorId,
+          message: 'Seeded invitation for websocket testing.',
+        },
+      });
+    }
   }
 
   return { adminId: admin.id };

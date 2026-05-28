@@ -53,6 +53,27 @@ export class AuthService {
       throw new UnauthorizedException('Unauthorized');
     }
 
+    if (!user.isEmailVerified) {
+      const now = new Date();
+      let token = user.emailVerificationToken;
+      let expiresAt = user.emailVerificationExpiresAt;
+
+      if (!token || !expiresAt || expiresAt <= now) {
+        token = randomBytes(32).toString('hex');
+        expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+        await this.prisma.user.update({
+          where: { id: user.id },
+          data: {
+            emailVerificationToken: token,
+            emailVerificationExpiresAt: expiresAt,
+          },
+        });
+      }
+
+      await this.mailService.sendVerificationEmail(user, token);
+      throw new UnauthorizedException('Email not verified');
+    }
+
     const sessionId = randomUUID();
     const tokens = await this.buildTokens(user, sessionId);
 
@@ -273,6 +294,42 @@ export class AuthService {
     } catch {
       throw new UnauthorizedException('Invalid refresh token');
     }
+  }
+
+  async verifyAccessToken(token: string): Promise<{ sub: number; username: string; role: UserRole; sessionId: string }> {
+    try {
+      return await this.jwtService.verifyAsync(token, {
+        secret: this.accessSecret(), 
+      });
+    } catch {
+      throw new UnauthorizedException('Invalid access token');
+    }
+  }
+
+  async verifyEmail(token: string): Promise<{ success: true }> {
+    const now = new Date();
+    const user = await this.prisma.user.findFirst({
+      where: {
+        emailVerificationToken: token,
+        emailVerificationExpiresAt: { gt: now },
+        deletedAt: null,
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('Invalid or expired verification token');
+    }
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        isEmailVerified: true,
+        emailVerificationToken: null,
+        emailVerificationExpiresAt: null,
+      },
+    });
+
+    return { success: true };
   }
 
   private async storeRefreshHash(sessionId: string, refreshToken: string) {
