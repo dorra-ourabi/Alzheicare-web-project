@@ -4,6 +4,8 @@ import { ConfigModule } from '@nestjs/config';
 import { UserController } from './Controllers/user.controller.js';
 import { UserService } from './Services/user.service.js';
 import { MailModule } from '../mail/mail.module.js';
+import { JwtAuthGuard } from '../auth/Guards/jwt.guard.js';
+import { RolesGuard } from '../auth/Guards/roles.guard.js';
 
 @Module({
   imports: [
@@ -15,7 +17,7 @@ import { MailModule } from '../mail/mail.module.js';
     MailModule,
   ],
   controllers: [UserController],
-  providers: [UserService],
+  providers: [UserService, JwtAuthGuard, RolesGuard],
   exports: [UserService],
 })
 export class UsersModule {}
