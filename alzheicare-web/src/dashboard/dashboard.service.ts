@@ -240,6 +240,40 @@ export class DashboardService {
       return tx.dailyLog.findUniqueOrThrow({ where: { id: dailyLog.id }, include: { moodEntry: true, behaviorEntries: true, weightRecord: true, sleepRecord: true } });
     });
   }
+  async getPatientDashboard(userId: number) {
+  const patient = await this.prisma.patient.findUnique({
+    where: { userId },
+    include: {
+      user: true,
+      chronicDiseases: { orderBy: { diagnosisDate: 'desc' } },
+      medications: { orderBy: { startDate: 'desc' } },
+      dailyLogs: {
+        include: {
+          moodEntry: true,
+          behaviorEntries: true,
+          weightRecord: true,
+          sleepRecord: true,
+        },
+        orderBy: { date: 'desc' },
+        take: 30,
+      },
+    },
+  });
+
+  if (!patient) throw new ForbiddenException('Patient profile not found');
+
+  return {
+    id: patient.id,
+    firstName: patient.user.firstName,
+    secondName: patient.user.secondName,
+    email: patient.user.email,
+    dateOfBirth: patient.dateOfBirth,
+    phone: patient.caregiversNumbers,
+    chronicDiseases: patient.chronicDiseases,
+    medications: patient.medications,
+    dailyLogs: patient.dailyLogs,
+  };
+}
 
   async getMoodEntries(patientId: number): Promise<MoodEntry[]> {
     return await this.prisma.moodEntry.findMany({ where: { patientId }, orderBy: { date: 'desc' } });
