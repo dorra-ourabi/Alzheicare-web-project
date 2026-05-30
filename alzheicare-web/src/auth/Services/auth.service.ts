@@ -87,31 +87,52 @@ export class AuthService {
   async googleLogin(loginDto: AuthGoogleLoginDto): Promise<AuthTokensDto> {
     const profile = await this.authGoogleService.getProfileByToken(loginDto);
 
-    if (!profile.email) {
+    const email = profile.email;
+
+    if (!email) {
       throw new UnauthorizedException('Google account has no email');
     }
 
     let user = await this.prisma.user.findFirst({
-      where: { email: profile.email, deletedAt: null },
+      where: { email, deletedAt: null },
     });
 
     if (!user) {
-      const username = await this.generateUniqueUsername(profile.email);
+      const username = await this.generateUniqueUsername(email);
       const passwordHash = await bcrypt.hash(
         randomBytes(32).toString('hex'),
         10,
       );
+      const role = loginDto.role ?? UserRole.Patient;
 
-      user = await this.prisma.user.create({
-        data: {
-          username,
-          firstName: profile.firstName || 'Google',
-          secondName: profile.lastName || 'User',
-          email: profile.email,
-          password: passwordHash,
-          role: UserRole.Patient,
-          isEmailVerified: true,
-        },
+      user = await this.prisma.$transaction(async (tx) => {
+        const createdUser = await tx.user.create({
+          data: {
+            username,
+            firstName: profile.firstName || 'Google',
+            secondName: profile.lastName || 'User',
+            email,
+            password: passwordHash,
+            role,
+            isEmailVerified: true,
+          },
+        });
+
+        if (role === UserRole.Doctor) {
+          await tx.doctor.create({
+            data: {
+              userId: createdUser.id,
+            },
+          });
+        } else {
+          await tx.patient.create({
+            data: {
+              userId: createdUser.id,
+            },
+          });
+        }
+
+        return createdUser;
       });
     }
 

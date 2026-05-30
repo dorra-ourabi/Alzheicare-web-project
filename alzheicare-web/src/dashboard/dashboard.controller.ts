@@ -4,7 +4,7 @@ import { Roles } from '../Decorators/roles.decorator.js';
 import { RolesGuard } from '../auth/Guards/roles.guard.js';
 import { JwtAuthGuard } from '../auth/Guards/jwt.guard.js';
 import { UserRole } from '../../generated/prisma/client.js';
-import { DashboardService } from './dashboard.service.js';
+import { DashboardService } from './dashboard.service';
 
 @Controller('dashboard')
 export class DashboardController {
