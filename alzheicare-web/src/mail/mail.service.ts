@@ -10,9 +10,9 @@ export class MailService {
   ) {}
 
   async sendVerificationEmail(user: any, token: string): Promise<void> {
-    const baseUrl =
-      this.config.get<string>('APP_URL') ?? 'http://localhost:3000';
-    const url = `${baseUrl}/auth/verify-email?token=${token}`;
+    const frontendUrl =
+      this.config.get<string>('FRONTEND_URL') ?? this.config.get<string>('APP_URL') ?? 'http://localhost:5173';
+    const url = `${frontendUrl.replace(/\/$/, '')}/auth/verify-email?token=${token}`;
 
     try {
       await this.mailer.sendMail({

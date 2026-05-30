@@ -234,7 +234,7 @@ export class AuthService {
     return tokens;
   }
 
-  async verifyEmail(token: string): Promise<{ success: true }> {
+  async verifyEmail(token: string): Promise<AuthTokensDto> {
     if (!token) {
       throw new BadRequestException('Verification token is required');
     }
@@ -245,7 +245,11 @@ export class AuthService {
         emailVerificationExpiresAt: { gt: new Date() },
         deletedAt: null,
       },
-      select: { id: true },
+      select: {
+        id: true,
+        username: true,
+        role: true,
+      },
     });
 
     if (!user) {
@@ -261,7 +265,11 @@ export class AuthService {
       },
     });
 
-    return { success: true };
+    const sessionId = randomUUID();
+    const tokens = await this.buildTokens(user, sessionId);
+    await this.storeRefreshHash(sessionId, tokens.refreshToken);
+
+    return tokens;
   }
 
   async refresh(dto: RefreshTokenDto): Promise<AuthTokensDto> {

@@ -10,6 +10,12 @@ async function bootstrap() {
     rawBody: true,
   });
 
+  const configuredOrigin = process.env.FRONTEND_URL;
+  const allowedExactOrigins = [configuredOrigin, 'http://localhost:5173']
+    .filter((origin): origin is string => Boolean(origin));
+
+  const localhostOriginPattern = /^http:\/\/localhost:\d+$/;
+
   // Enable versioning
   app.enableVersioning({
     type: VersioningType.URI,
@@ -17,7 +23,19 @@ async function bootstrap() {
 
   // Enable CORS
   app.enableCors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+    origin: (origin, callback) => {
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+
+      if (allowedExactOrigins.includes(origin) || localhostOriginPattern.test(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error(`CORS origin not allowed: ${origin}`), false);
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
