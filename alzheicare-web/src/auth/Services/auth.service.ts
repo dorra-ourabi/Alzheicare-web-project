@@ -11,6 +11,8 @@ import * as bcrypt from 'bcrypt';
 import { createHash, randomBytes, randomUUID } from 'crypto';
 
 import { LoginCredentialsDto } from '../../users/DTOs/LoginCredentialsDto.js';
+import { CreateDoctorDto } from '../../users/DTOs/createDoctorDto.js';
+import { CreatePatientDto } from '../../users/DTOs/createPatientDto.js';
 import { CreateUserDto } from '../../users/DTOs/createUserDto.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { RefreshTokenDto } from '../DTOs/RefreshTokenDto.js';
@@ -121,6 +123,21 @@ export class AuthService {
   }
 
   async register(dto: CreateUserDto): Promise<AuthTokensDto> {
+    return this.registerWithRole(dto, dto.role || UserRole.Patient);
+  }
+
+  async registerPatient(dto: CreatePatientDto): Promise<AuthTokensDto> {
+    return this.registerWithRole(dto, UserRole.Patient);
+  }
+
+  async registerDoctor(dto: CreateDoctorDto): Promise<AuthTokensDto> {
+    return this.registerWithRole(dto, UserRole.Doctor);
+  }
+
+  private async registerWithRole(
+    dto: CreateUserDto,
+    role: UserRole,
+  ): Promise<AuthTokensDto> {
     if (!dto.password) {
       throw new BadRequestException('Password is required');
     }
@@ -145,28 +162,70 @@ export class AuthService {
       Date.now() + 24 * 60 * 60 * 1000,
     );
 
-    const user = await this.prisma.user.create({
-      data: {
-        username: dto.username,
-        firstName: dto.firstName,
-        secondName: dto.secondName,
-        email: dto.email,
-        password: hashedPassword,
-        role: dto.role || UserRole.Patient,
-        emailVerificationToken,
-        emailVerificationExpiresAt,
-        isEmailVerified: false,
-      },
-      select: {
-        id: true,
-        username: true,
-        role: true,
-        email: true,
-        firstName: true,
-      },
+    const user = await this.prisma.$transaction(async (tx) => {
+      const createdUser = await tx.user.create({
+        data: {
+          username: dto.username,
+          firstName: dto.firstName,
+          secondName: dto.secondName,
+          email: dto.email,
+          password: hashedPassword,
+          role,
+          emailVerificationToken,
+          emailVerificationExpiresAt,
+          isEmailVerified: false,
+        },
+        select: {
+          id: true,
+          username: true,
+          role: true,
+          email: true,
+          firstName: true,
+        },
+      });
+
+      if (role === UserRole.Doctor) {
+        const doctorData: {
+          userId: number;
+          licenceNumber?: string;
+          specialization?: string;
+        } = {
+          userId: createdUser.id,
+        };
+
+        const doctorDto = dto as CreateDoctorDto;
+        if (doctorDto.licenceNumber) {
+          doctorData.licenceNumber = doctorDto.licenceNumber;
+        }
+        if (doctorDto.specialization) {
+          doctorData.specialization = doctorDto.specialization;
+        }
+
+        await tx.doctor.create({ data: doctorData });
+      } else {
+        const patientData: {
+          userId: number;
+          phoneNumber?: string;
+        } = {
+          userId: createdUser.id,
+        };
+
+        const patientDto = dto as CreatePatientDto;
+        if (patientDto.phoneNumber) {
+          patientData.phoneNumber = patientDto.phoneNumber;
+        }
+
+        await tx.patient.create({ data: patientData });
+      }
+
+      return createdUser;
     });
 
-    await this.mailService.sendVerificationEmail(user, emailVerificationToken);
+    try {
+      await this.mailService.sendVerificationEmail(user, emailVerificationToken);
+    } catch (err) {
+      console.error('Failed to send verification email (auth.register):', err);
+    }
 
     const sessionId = randomUUID();
     const tokens = await this.buildTokens(user, sessionId);

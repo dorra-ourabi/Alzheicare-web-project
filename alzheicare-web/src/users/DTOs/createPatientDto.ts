@@ -5,4 +5,5 @@ export class CreatePatientDto extends CreateUserDto {
   @IsString()
   @IsOptional()
   phoneNumber?: string;
+  
 }
