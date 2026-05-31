@@ -11,7 +11,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 export class TelegramService
   implements OnModuleInit, OnApplicationBootstrap, OnModuleDestroy
 {
-  private bot: Telegraf;
+  private bot!: Telegraf;
 
   constructor(private readonly prisma: PrismaService) {}
 

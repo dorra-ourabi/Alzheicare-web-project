@@ -5,9 +5,9 @@ export class RespondViaTokenDto {
   @IsNotEmpty()
   @IsString()
   @Matches(/^[0-9a-f]{64}$/)
-  token: string;
+  token!: string;
 
   @IsEnum(RespondStatus)
   @IsNotEmpty()
-  action: RespondStatus;
+  action!: RespondStatus;
 }

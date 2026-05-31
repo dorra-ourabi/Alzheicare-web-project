@@ -8,5 +8,5 @@ export enum RespondStatus {
 export class RespondInvitationDto {
   @IsEnum(RespondStatus)
   @IsNotEmpty()
-  status: RespondStatus;
+  status!: RespondStatus;
 }
