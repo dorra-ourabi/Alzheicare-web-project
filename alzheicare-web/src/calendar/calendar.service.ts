@@ -242,7 +242,7 @@ export class CalendarService {
 
     for (const item of validItems) {
       if (item.status === 'cancelled') {
-        const existing = existingByGoogleId.get(item.id!);
+        const existing = existingByGoogleId.get(item.id!) as any;
         if (existing) {
           await this.notificationScheduler.cancelEventNotification(existing.id);
           await this.prisma.calendarEvent.delete({
@@ -263,19 +263,20 @@ export class CalendarService {
 
       const existing = existingByGoogleId.get(item.id!);
       if (existing) {
+        const calendarEvent = existing as any;
         const timeChanged =
-          existing.startTime.getTime() !== startTime.getTime() ||
-          existing.endTime.getTime() !== endTime.getTime();
+          calendarEvent.startTime.getTime() !== startTime.getTime() ||
+          calendarEvent.endTime.getTime() !== endTime.getTime();
 
         const saved = await this.prisma.calendarEvent.update({
-          where: { id: existing.id },
+          where: { id: calendarEvent.id },
           data: {
             title,
             description,
             startTime,
             endTime,
-            seriesId: item.recurringEventId ?? existing.seriesId ?? undefined,
-            notificationSent: timeChanged ? false : existing.notificationSent,
+            seriesId: item.recurringEventId ?? calendarEvent.seriesId ?? undefined,
+            notificationSent: timeChanged ? false : calendarEvent.notificationSent,
           },
         });
         await this.notificationScheduler.rescheduleEventNotification(saved);

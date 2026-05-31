@@ -5,11 +5,14 @@ import {
   Search, UserPlus, Mail, Check,
   Clock, Stethoscope, Send
 } from 'lucide-react'
+import { apiRequest } from '../../lib/api'
 import {
+  fetchMyInvitations,
   searchDoctors,
   sendDoctorInvitation,
   sendExternalDoctorInvitation,
   type DoctorSearchResult,
+  type MyInvitationResponse,
 } from '../../api/invitations'
 
 interface Doctor {
@@ -19,6 +22,34 @@ interface Doctor {
   hospital: string
   avatar: string
   status: 'none' | 'pending' | 'connected'
+}
+
+type ConnectedDoctorResponse = {
+  patient?: {
+    doctor?: {
+      id: number
+      user: {
+        firstName: string
+        secondName: string
+        specialization?: string | null
+        licenceNumber?: string | null
+      }
+    } | null
+  } | null
+}
+
+const doctorFromInvitation = (invitation: MyInvitationResponse): Doctor | null => {
+  if (!invitation.doctor) return null
+
+  const doctorUser = invitation.doctor.user
+  return {
+    id: invitation.doctor.id,
+    name: `${doctorUser.firstName} ${doctorUser.secondName}`,
+    specialty: doctorUser.specialization ?? 'Doctor',
+    hospital: doctorUser.licenceNumber ?? 'Connected doctor',
+    avatar: `${doctorUser.firstName?.[0] ?? 'D'}${doctorUser.secondName?.[0] ?? 'D'}`,
+    status: 'connected',
+  }
 }
 
 const formatDoctor = (doctor: DoctorSearchResult): Doctor => ({
@@ -51,6 +82,8 @@ const statusConfig = {
 export default function DoctorNetwork() {
   const { accessToken: token } = useAuth()
   const [doctors, setDoctors] = useState<Doctor[]>([])
+  const [connectedDoctor, setConnectedDoctor] = useState<Doctor | null>(null)
+  const [connectedDoctorIds, setConnectedDoctorIds] = useState<number[]>([])
   const [search, setSearch] = useState('')
   const [externalEmail, setExternalEmail] = useState('')
   const [inviteSent, setInviteSent] = useState(false)
@@ -86,6 +119,57 @@ export default function DoctorNetwork() {
       isMounted = false
     }
   }, [search, token])
+
+  useEffect(() => {
+    if (!token) return
+
+    let isMounted = true
+
+    Promise.all([
+      apiRequest<ConnectedDoctorResponse>('/users/me', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }),
+      fetchMyInvitations(token),
+    ])
+      .then(([userResponse, invitations]) => {
+        if (!isMounted) return
+
+        const acceptedDoctors = invitations
+          .filter((invitation) => invitation.status === 'ACCEPTED')
+          .map(doctorFromInvitation)
+          .filter((doctor): doctor is Doctor => doctor !== null)
+
+        const relationDoctor = userResponse.patient?.doctor?.user && userResponse.patient?.doctor?.id
+          ? {
+              id: userResponse.patient.doctor.id,
+              name: `${userResponse.patient.doctor.user.firstName} ${userResponse.patient.doctor.user.secondName}`,
+              specialty: userResponse.patient.doctor.user.specialization ?? 'Doctor',
+              hospital: userResponse.patient.doctor.user.licenceNumber ?? 'Connected doctor',
+              avatar: `${userResponse.patient.doctor.user.firstName?.[0] ?? 'D'}${userResponse.patient.doctor.user.secondName?.[0] ?? 'D'}`,
+              status: 'connected' as const,
+            }
+          : null
+
+        const primaryConnected = relationDoctor ?? acceptedDoctors[0] ?? null
+        setConnectedDoctor(primaryConnected)
+        setConnectedDoctorIds(
+          [primaryConnected?.id, ...acceptedDoctors.map((doctor) => doctor.id)].filter(
+            (id): id is number => typeof id === 'number',
+          ),
+        )
+      })
+      .catch(() => {
+        if (!isMounted) return
+        setConnectedDoctor(null)
+        setConnectedDoctorIds([])
+      })
+
+    return () => {
+      isMounted = false
+    }
+  }, [token])
 
   const sendRequest = async (id: number) => {
     if (!token) return
@@ -128,7 +212,13 @@ export default function DoctorNetwork() {
     d.specialty.toLowerCase().includes(search.toLowerCase())
   )
 
-  const connected = doctors.filter((d) => d.status === 'connected')
+  const searchResults = filtered.map((doctor) =>
+    connectedDoctorIds.includes(doctor.id)
+      ? { ...doctor, status: 'connected' as const }
+      : doctor,
+  )
+
+  const connected = connectedDoctor ? [connectedDoctor] : []
 
   if (!token) {
     return (
@@ -206,7 +296,7 @@ export default function DoctorNetwork() {
                   Loading doctors...
                 </div>
               ) : (
-                (activeTab === 'search' ? filtered : connected).map((doctor) => {
+                (activeTab === 'search' ? searchResults : connected).map((doctor) => {
                   const { label, icon: Icon, style } = statusConfig[doctor.status]
                   return (
                     <div
@@ -249,7 +339,7 @@ export default function DoctorNetwork() {
                 })
               )}
 
-              {!loadingDoctors && (activeTab === 'search' ? filtered : connected).length === 0 && (
+              {!loadingDoctors && (activeTab === 'search' ? searchResults : connected).length === 0 && (
                 <div className="flex flex-col items-center justify-center py-16 text-center bg-white rounded-2xl border border-gray-100">
                   <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center mb-3">
                     <Stethoscope size={24} className="text-gray-300" />

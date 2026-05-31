@@ -6,6 +6,8 @@
     "test",
     "dist",
     "**/*spec.ts",
-    "Alzheicare-front"
+    "Alzheicare-front",
+    "prisma.config.ts",
+    "prisma/prisma.config.ts"
   ]
 }

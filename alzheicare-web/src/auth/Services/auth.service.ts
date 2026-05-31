@@ -105,7 +105,7 @@ export class AuthService {
       );
       const role = loginDto.role ?? UserRole.Patient;
 
-      user = await this.prisma.$transaction(async (tx) => {
+      user = await this.prisma.$transaction(async (tx: any) => {
         const createdUser = await tx.user.create({
           data: {
             username,
@@ -183,7 +183,7 @@ export class AuthService {
       Date.now() + 24 * 60 * 60 * 1000,
     );
 
-    const user = await this.prisma.$transaction(async (tx) => {
+    const user = await this.prisma.$transaction(async (tx: any) => {
       const createdUser = await tx.user.create({
         data: {
           username: dto.username,
@@ -345,8 +345,17 @@ export class AuthService {
       throw new UnauthorizedException('User not found');
     }
 
-    const tokens = await this.buildTokens(user, sessionId);
-    await this.storeRefreshHash(sessionId, tokens.refreshToken);
+    const remainingRefreshSeconds = Math.max(
+      (payload.exp ?? 0) - Math.floor(Date.now() / 1000),
+      1,
+    );
+
+    const tokens = await this.buildTokens(
+      user,
+      sessionId,
+      remainingRefreshSeconds,
+    );
+    await this.storeRefreshHash(sessionId, tokens.refreshToken, remainingRefreshSeconds);
 
     return tokens;
   }
@@ -366,6 +375,7 @@ export class AuthService {
   private async buildTokens(
     user: any,
     sessionId: string,
+    refreshExpiresInSeconds = this.refreshExpires(),
   ): Promise<AuthTokensDto> {
     if (!user.id || !user.username || !user.role) {
       throw new UnauthorizedException('Uauthorized');
@@ -391,7 +401,7 @@ export class AuthService {
       },
       {
         secret: this.refreshSecret(),
-        expiresIn: this.refreshExpires(),
+        expiresIn: refreshExpiresInSeconds,
       },
     );
 
@@ -400,7 +410,7 @@ export class AuthService {
 
   private async verifyRefreshToken(
     refreshToken: string,
-  ): Promise<{ sub: number; sessionId: string }> {
+  ): Promise<{ sub: number; sessionId: string; exp?: number }> {
     try {
       return await this.jwtService.verifyAsync(refreshToken, {
         secret: this.refreshSecret(),
@@ -425,8 +435,11 @@ export class AuthService {
     }
   }
 
-  private async storeRefreshHash(sessionId: string, refreshToken: string) {
-    const ttlSeconds = this.refreshExpires();
+  private async storeRefreshHash(
+    sessionId: string,
+    refreshToken: string,
+    ttlSeconds = this.refreshExpires(),
+  ) {
     await this.redisService.set(
       this.sessionKey(sessionId),
       this.hashToken(refreshToken),

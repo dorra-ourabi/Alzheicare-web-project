@@ -25,6 +25,8 @@
   "exclude": [
     "node_modules",
     "dist",
-    "Alzheicare-front"
+    "Alzheicare-front",
+    "prisma.config.ts",
+    "prisma/prisma.config.ts"
   ]
 }

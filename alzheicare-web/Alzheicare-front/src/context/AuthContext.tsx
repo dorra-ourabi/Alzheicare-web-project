@@ -14,17 +14,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [accessToken, setAccessToken] = useState<string | null>(null)
   const [refreshToken, setRefreshToken] = useState<string | null>(null)
 
-  useEffect(() => {
+  const syncFromStorage = () => {
     const savedAccessToken = localStorage.getItem(ACCESS_TOKEN_KEY)
     const savedRefreshToken = localStorage.getItem(REFRESH_TOKEN_KEY)
     const savedUser = localStorage.getItem(USER_KEY)
 
-    if (!savedAccessToken || !savedRefreshToken) {
-      return
-    }
-
     setAccessToken(savedAccessToken)
     setRefreshToken(savedRefreshToken)
+
+    if (!savedAccessToken) {
+      setUser(null)
+      return
+    }
 
     if (savedUser) {
       try {
@@ -36,6 +37,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     setUser(buildAuthUser(savedAccessToken))
+  }
+
+  useEffect(() => {
+    syncFromStorage()
+
+    const handleAuthUpdate = () => syncFromStorage()
+    window.addEventListener('auth:tokens-updated', handleAuthUpdate)
+    window.addEventListener('storage', handleAuthUpdate)
+
+    return () => {
+      window.removeEventListener('auth:tokens-updated', handleAuthUpdate)
+      window.removeEventListener('storage', handleAuthUpdate)
+    }
   }, [])
 
   const login = (tokens: AuthTokens, newUser?: AuthUser) => {

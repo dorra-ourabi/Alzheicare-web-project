@@ -219,7 +219,7 @@ export class DashboardService {
     const { patientId, date, mood, moodNote, behaviors, weightKg, sleep } = data;
     const parsedDate = new Date(date);
 
-    return await this.prisma.$transaction(async (tx) => {
+    return await this.prisma.$transaction(async (tx: any) => {
       const dailyLog = await tx.dailyLog.upsert({ where: { patientId_date: { patientId, date: parsedDate } }, update: {}, create: { patientId, date: parsedDate } });
 
       await tx.moodEntry.upsert({ where: { dailyLogId: dailyLog.id }, update: { mood, notes: moodNote ?? null }, create: { patientId, dailyLogId: dailyLog.id, date: parsedDate, mood, notes: moodNote ?? null } });

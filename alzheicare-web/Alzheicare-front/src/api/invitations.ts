@@ -40,6 +40,19 @@ export interface DoctorInvitationResponse {
   createdAt: string
 }
 
+export interface MyInvitationResponse {
+  id: number
+  patientId: number
+  doctorId?: number | null
+  doctorEmail?: string | null
+  status: string
+  message?: string | null
+  doctor?: {
+    id: number
+    user: DoctorSearchResult
+  } | null
+}
+
 export type InvitationStatus = 'ACCEPTED' | 'REJECTED'
 
 export const searchDoctors = async (
@@ -91,3 +104,7 @@ export const sendExternalDoctorInvitation = async (
     },
     token,
   )
+
+export const fetchMyInvitations = async (
+  token: string | null,
+): Promise<MyInvitationResponse[]> => request<MyInvitationResponse[]>('/invitations/mine', undefined, token)

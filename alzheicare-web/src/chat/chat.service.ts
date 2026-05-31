@@ -12,7 +12,7 @@ export class ChatService {
   constructor(private readonly prisma: PrismaService) {}
 
   async createMessage(input: CreateMessageInput) {
-    return this.prisma.$transaction(async (tx) => {
+    return this.prisma.$transaction(async (tx: any) => {
       const message = await tx.message.create({
         data: {
           conversationId: input.conversationId,

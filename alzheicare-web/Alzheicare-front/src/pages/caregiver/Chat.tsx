@@ -1,9 +1,13 @@
-import { useState, useRef, useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Sidebar from '../../components/caregiver/Sidebar'
 import { Send, Phone, Video, Search } from 'lucide-react'
+import { useAuth } from '../../context/useAuth'
+import { apiRequest } from '../../lib/api'
+import { createChatSocket, type ChatSocketMessage } from '../../lib/chat-socket'
 
 interface Doctor {
   id: number
+  conversationId: number
   name: string
   specialty: string
   avatar: string
@@ -13,73 +17,251 @@ interface Doctor {
 
 interface Message {
   id: number
-  sender: 'caregiver' | 'doctor'
+  sender: 'patient' | 'doctor'
   text: string
   time: string
 }
 
-const doctors: Doctor[] = [
-  {
-    id: 1,
-    name: 'Dr. A. Moreau',
-    specialty: 'Neurologist',
-    avatar: 'AM',
-    online: true,
-    lastSeen: 'Online',
-  },
-  {
-    id: 2,
-    name: 'Dr. S. Benali',
-    specialty: 'Geriatrician',
-    avatar: 'SB',
-    online: false,
-    lastSeen: 'Last seen 2h ago',
-  },
-]
-
-const mockMessages: Record<number, Message[]> = {
-  1: [
-    { id: 1, sender: 'doctor', text: 'Good morning! How is Margaret doing today?', time: '08:00' },
-    { id: 2, sender: 'caregiver', text: 'She had a rough night, was wandering around at 3am.', time: '08:15' },
-    { id: 3, sender: 'doctor', text: 'I see. Has she taken her Lisinopril this morning?', time: '08:20' },
-    { id: 4, sender: 'caregiver', text: 'Yes, all medications were taken at 7:30am.', time: '08:45' },
-    { id: 5, sender: 'doctor', text: 'Good. Keep monitoring her and let me know if anything changes.', time: '09:00' },
-  ],
-  2: [
-    { id: 1, sender: 'doctor', text: 'Hello, please send me the latest behavioral report when you can.', time: 'Yesterday' },
-    { id: 2, sender: 'caregiver', text: 'Of course, I will send it today.', time: 'Yesterday' },
-  ],
+type MeResponse = {
+  id: number
+  patient?: {
+    conversations?: Array<{
+      id: number
+      doctor: {
+        user: {
+          firstName: string
+          secondName: string
+          specialization?: string | null
+          licenceNumber?: string | null
+        }
+      }
+      messages: Array<{
+        id: number
+        senderId: number
+        content: string
+        sentAt: string
+      }>
+    }>
+  }
 }
 
+const formatTime = (value: string) =>
+  new Date(value).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+
 export default function CaregiverChat() {
-  const [selected, setSelected] = useState<Doctor>(doctors[0])
-  const [messages, setMessages] = useState(mockMessages)
+  const { accessToken: token } = useAuth()
+  const [doctors, setDoctors] = useState<Doctor[]>([])
+  const [messages, setMessages] = useState<Record<number, Message[]>>({})
+  const [selectedConversationId, setSelectedConversationId] = useState<number | null>(null)
   const [input, setInput] = useState('')
   const [search, setSearch] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
+  const socketRef = useRef<ReturnType<typeof createChatSocket> | null>(null)
+  const userIdRef = useRef<number | null>(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, selected])
+  }, [messages, selectedConversationId])
+
+  useEffect(() => {
+    if (!token) return
+
+    let isMounted = true
+    setLoading(true)
+    setError('')
+
+    apiRequest<MeResponse>('/users/me', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((response) => {
+        if (!isMounted) return
+        userIdRef.current = response.id
+
+        const conversations = response.patient?.conversations ?? []
+        const nextDoctors: Doctor[] = conversations.map((conversation) => {
+          const doctorUser = conversation.doctor.user
+          const lastMessage = conversation.messages.at(-1)
+          return {
+            id: conversation.id,
+            conversationId: conversation.id,
+            name: `${doctorUser.firstName} ${doctorUser.secondName}`,
+            specialty: doctorUser.specialization ?? 'Doctor',
+            avatar: `${doctorUser.firstName?.[0] ?? 'D'}${doctorUser.secondName?.[0] ?? 'D'}`,
+            online: false,
+            lastSeen: lastMessage ? `Updated ${formatTime(lastMessage.sentAt)}` : 'No messages yet',
+          }
+        })
+
+        const nextMessages = Object.fromEntries(
+          conversations.map((conversation) => [
+            conversation.id,
+            conversation.messages.map((message) => ({
+              id: message.id,
+              sender: message.senderId === response.id ? 'patient' : 'doctor',
+              text: message.content,
+              time: formatTime(message.sentAt),
+            })),
+          ]),
+        ) as Record<number, Message[]>
+
+        setDoctors(nextDoctors)
+        setMessages(nextMessages)
+        setSelectedConversationId((current) => current ?? nextDoctors[0]?.conversationId ?? null)
+      })
+      .catch((caughtError) => {
+        if (!isMounted) return
+        setError(caughtError instanceof Error ? caughtError.message : 'Could not load conversations.')
+      })
+      .finally(() => {
+        if (!isMounted) return
+        setLoading(false)
+      })
+
+    return () => {
+      isMounted = false
+    }
+  }, [token])
+
+  const selectedDoctor =
+    doctors.find((doctor) => doctor.conversationId === selectedConversationId) ?? doctors[0] ?? null
+
+  useEffect(() => {
+    if (!token || !selectedDoctor) return
+
+    const socket = createChatSocket(token)
+    socketRef.current = socket
+
+    const joinRoom = () => {
+      socket.emit('join', { conversationId: selectedDoctor.conversationId })
+      socket.emit('markRead', { conversationId: selectedDoctor.conversationId })
+    }
+
+    socket.on('connect', joinRoom)
+
+    const handleMessage = (incoming: ChatSocketMessage) => {
+      const time = formatTime(incoming.at)
+      const sender: Message['sender'] = incoming.fromRole.toLowerCase() === 'patient' ? 'patient' : 'doctor'
+
+      setMessages((prev) => ({
+        ...prev,
+        [incoming.conversationId]: [
+          ...(prev[incoming.conversationId] || []),
+          {
+            id: incoming.id,
+            sender,
+            text: incoming.content,
+            time,
+          },
+        ],
+      }))
+
+      setDoctors((prev) =>
+        prev.map((doctor) =>
+          doctor.conversationId === incoming.conversationId
+            ? {
+                ...doctor,
+                lastSeen: `Updated ${time}`,
+              }
+            : doctor,
+        ),
+      )
+    }
+
+    socket.on('message', handleMessage)
+    joinRoom()
+
+    return () => {
+      socket.off('connect', joinRoom)
+      socket.off('message', handleMessage)
+      socket.disconnect()
+      socketRef.current = null
+    }
+  }, [selectedDoctor?.conversationId, token])
+
+  const filtered = doctors.filter((doctor) =>
+    doctor.name.toLowerCase().includes(search.toLowerCase()) ||
+    doctor.specialty.toLowerCase().includes(search.toLowerCase()),
+  )
 
   const sendMessage = () => {
-    if (!input.trim()) return
-    const newMsg: Message = {
-      id: Date.now(),
-      sender: 'caregiver',
-      text: input,
-      time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+    if (!input.trim() || !selectedDoctor) return
+
+    const content = input.trim()
+    const socket = socketRef.current
+    const time = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+
+    if (socket?.connected) {
+      socket.emit('message', {
+        conversationId: selectedDoctor.conversationId,
+        content,
+      })
+      socket.emit('markRead', { conversationId: selectedDoctor.conversationId })
+    } else {
+      const newMsg: Message = {
+        id: Date.now(),
+        sender: 'patient',
+        text: content,
+        time,
+      }
+      setMessages((prev) => ({
+        ...prev,
+        [selectedDoctor.conversationId]: [...(prev[selectedDoctor.conversationId] || []), newMsg],
+      }))
     }
-    setMessages((prev) => ({
-      ...prev,
-      [selected.id]: [...(prev[selected.id] || []), newMsg],
-    }))
+
+    setDoctors((prev) =>
+      prev.map((doctor) =>
+        doctor.conversationId === selectedDoctor.conversationId
+          ? { ...doctor, lastSeen: `Updated ${time}` }
+          : doctor,
+      ),
+    )
+
     setInput('')
   }
 
-  const filtered = doctors.filter((d) =>
-    d.name.toLowerCase().includes(search.toLowerCase())
-  )
+  if (!token) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#f4f7fb] p-6">
+        <div className="max-w-md w-full bg-white rounded-3xl border border-gray-100 shadow-sm p-8 text-center">
+          <h1 className="text-lg font-semibold text-gray-900">Sign in to chat</h1>
+          <p className="text-sm text-gray-500 mt-3">You need an authenticated caregiver session.</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#f4f7fb] text-sm text-gray-500">
+        Loading conversations...
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#f4f7fb] px-6">
+        <div className="max-w-md rounded-3xl border border-red-200 bg-white p-6 text-center shadow-sm">
+          <h1 className="text-lg font-bold text-gray-900">Chat unavailable</h1>
+          <p className="mt-2 text-sm text-gray-500">{error}</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!selectedDoctor) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#f4f7fb] px-6">
+        <div className="max-w-md rounded-3xl border border-gray-100 bg-white p-6 text-center shadow-sm">
+          <h1 className="text-lg font-bold text-gray-900">No connected doctor yet</h1>
+          <p className="mt-2 text-sm text-gray-500">Accept an invitation first, then your conversation room will appear here.</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex min-h-screen bg-[#f4f7fb]">
@@ -88,12 +270,10 @@ export default function CaregiverChat() {
       <main className="flex-1 p-6 overflow-hidden">
         <div className="mb-5">
           <h1 className="text-xl font-bold text-gray-900">Chat</h1>
-          <p className="text-xs text-gray-400">Messages with your connected doctors</p>
+          <p className="text-xs text-gray-400">Messages with your connected doctor</p>
         </div>
 
         <div className="flex h-[calc(100vh-140px)] bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-
-          {/* Doctor List */}
           <div className="w-64 border-r border-gray-100 flex flex-col">
             <div className="p-4 border-b border-gray-100">
               <div className="flex items-center gap-2 bg-gray-50 rounded-xl px-3 py-2">
@@ -111,10 +291,10 @@ export default function CaregiverChat() {
             <div className="flex-1 overflow-y-auto">
               {filtered.map((doctor) => (
                 <button
-                  key={doctor.id}
-                  onClick={() => setSelected(doctor)}
+                  key={doctor.conversationId}
+                  onClick={() => setSelectedConversationId(doctor.conversationId)}
                   className={`w-full flex items-center gap-3 px-4 py-3.5 border-b border-gray-50 transition-all text-left ${
-                    selected.id === doctor.id ? 'bg-[#1a6fb5]/8' : 'hover:bg-gray-50'
+                    selectedDoctor.conversationId === doctor.conversationId ? 'bg-[#1a6fb5]/8' : 'hover:bg-gray-50'
                   }`}
                 >
                   <div className="relative">
@@ -124,25 +304,19 @@ export default function CaregiverChat() {
                     >
                       {doctor.avatar}
                     </div>
-                    <span
-                      className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-white ${
-                        doctor.online ? 'bg-emerald-400' : 'bg-gray-300'
-                      }`}
-                    />
+                    <span className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-white ${doctor.online ? 'bg-emerald-400' : 'bg-gray-300'}`} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-gray-800 truncate">{doctor.name}</p>
                     <p className="text-xs text-gray-400 truncate">{doctor.specialty}</p>
+                    <p className="text-xs text-gray-300 truncate mt-0.5">{doctor.lastSeen}</p>
                   </div>
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Chat Window */}
           <div className="flex-1 flex flex-col">
-
-            {/* Header */}
             <div
               className="flex items-center justify-between px-5 py-4 border-b border-gray-100"
               style={{ background: 'linear-gradient(90deg, #f0f6ff 0%, #ffffff 100%)' }}
@@ -153,17 +327,13 @@ export default function CaregiverChat() {
                     className="w-10 h-10 rounded-full flex items-center justify-center text-white text-xs font-bold"
                     style={{ background: 'linear-gradient(135deg, #1a6fb5, #6366f1)' }}
                   >
-                    {selected.avatar}
+                    {selectedDoctor.avatar}
                   </div>
-                  <span
-                    className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-white ${
-                      selected.online ? 'bg-emerald-400' : 'bg-gray-300'
-                    }`}
-                  />
+                  <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-white bg-emerald-400" />
                 </div>
                 <div>
-                  <p className="font-semibold text-gray-800 text-sm">{selected.name}</p>
-                  <p className="text-xs text-gray-400">{selected.lastSeen}</p>
+                  <p className="font-semibold text-gray-800 text-sm">{selectedDoctor.name}</p>
+                  <p className="text-xs text-gray-400">{selectedDoctor.specialty}</p>
                 </div>
               </div>
               <div className="flex gap-2">
@@ -176,22 +346,21 @@ export default function CaregiverChat() {
               </div>
             </div>
 
-            {/* Messages */}
             <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-3 bg-[#f8fafc]">
-              {(messages[selected.id] || []).map((msg) => (
+              {(messages[selectedDoctor.conversationId] || []).map((msg) => (
                 <div
                   key={msg.id}
-                  className={`flex ${msg.sender === 'caregiver' ? 'justify-end' : 'justify-start'}`}
+                  className={`flex ${msg.sender === 'patient' ? 'justify-end' : 'justify-start'}`}
                 >
                   <div
                     className={`max-w-xs px-4 py-2.5 rounded-2xl text-sm ${
-                      msg.sender === 'caregiver'
+                      msg.sender === 'patient'
                         ? 'bg-[#1a6fb5] text-white rounded-tr-sm'
                         : 'bg-white text-gray-700 rounded-tl-sm shadow-sm border border-gray-100'
                     }`}
                   >
                     <p>{msg.text}</p>
-                    <p className={`text-xs mt-1 ${msg.sender === 'caregiver' ? 'text-blue-200' : 'text-gray-400'}`}>
+                    <p className={`text-xs mt-1 ${msg.sender === 'patient' ? 'text-blue-200' : 'text-gray-400'}`}>
                       {msg.time}
                     </p>
                   </div>
@@ -200,7 +369,6 @@ export default function CaregiverChat() {
               <div ref={bottomRef} />
             </div>
 
-            {/* Input */}
             <div className="px-5 py-4 border-t border-gray-100 bg-white">
               <div className="flex items-center gap-3 bg-gray-50 rounded-2xl px-4 py-2.5 border border-gray-100 focus-within:border-[#1a6fb5]/40 transition">
                 <input

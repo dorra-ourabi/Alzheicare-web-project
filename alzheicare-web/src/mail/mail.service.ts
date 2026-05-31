@@ -39,8 +39,10 @@ export class MailService {
     message?: string,
   ) {
     const baseUrl =
-      this.config.get<string>('APP_URL') ?? 'http://localhost:3000';
-    const dashboardUrl = `${baseUrl.replace(/\/$/, '')}/dashboard`;
+      this.config.get<string>('FRONTEND_URL') ??
+      this.config.get<string>('APP_URL') ??
+      'http://localhost:5173';
+    const dashboardUrl = `${baseUrl.replace(/\/$/, '')}/doctor/dashboard`;
 
     const html = `
       <div style="font-family: Arial, sans-serif; max-width:560px;margin:0 auto;">
@@ -71,7 +73,9 @@ export class MailService {
     message?: string,
   ) {
     const baseUrl =
-      this.config.get<string>('APP_URL') ?? 'http://localhost:3000';
+      this.config.get<string>('FRONTEND_URL') ??
+      this.config.get<string>('APP_URL') ??
+      'http://localhost:5173';
     const acceptUrl = `${baseUrl.replace(/\/$/, '')}/doctor/auth?invitationToken=${token}`;
     const declineUrl = `${baseUrl.replace(/\/$/, '')}/invitations/respond-via-token/public?token=${token}&action=REJECTED`;
 
@@ -99,7 +103,10 @@ export class MailService {
   }
 
   async sendInvitationAcceptedEmail(patientUser: any, doctorUser: any) {
-    const url = this.config.get<string>('APP_URL') ?? 'https://alzheicare.com';
+    const url =
+      this.config.get<string>('FRONTEND_URL') ??
+      this.config.get<string>('APP_URL') ??
+      'https://alzheicare.com';
 
     try {
       await this.mailer.sendMail({
@@ -108,7 +115,7 @@ export class MailService {
         template: 'invitation-accepted',
         context: {
           doctorName: `${doctorUser.firstName} ${doctorUser.secondName}`,
-          dashboardUrl: `${url}/dashboard`,
+          dashboardUrl: `${url.replace(/\/$/, '')}/caregiver/dashboard`,
         },
       });
     } catch (err) {
@@ -119,7 +126,10 @@ export class MailService {
   }
 
   async sendInvitationRejectedEmail(patientUser: any, doctorUser?: any) {
-    const url = this.config.get<string>('APP_URL') ?? 'https://alzheicare.com';
+    const url =
+      this.config.get<string>('FRONTEND_URL') ??
+      this.config.get<string>('APP_URL') ??
+      'https://alzheicare.com';
 
     try {
       await this.mailer.sendMail({
@@ -130,7 +140,7 @@ export class MailService {
           doctorName: doctorUser
             ? `${doctorUser.firstName} ${doctorUser.secondName}`
             : null,
-          dashboardUrl: `${url}/dashboard`,
+          dashboardUrl: `${url.replace(/\/$/, '')}/caregiver/dashboard`,
         },
       });
     } catch (err) {
@@ -146,7 +156,10 @@ export class MailService {
     senderName: string,
     messagePreview: string,
   ) {
-    const url = this.config.get<string>('APP_URL') ?? 'https://alzheicare.com';
+    const url =
+      this.config.get<string>('FRONTEND_URL') ??
+      this.config.get<string>('APP_URL') ??
+      'https://alzheicare.com';
     const safePreview =
       messagePreview.length > 140
         ? `${messagePreview.slice(0, 140)}...`
@@ -161,7 +174,7 @@ export class MailService {
           senderName,
           patientName: `${patientUser.firstName} ${patientUser.secondName}`,
           messagePreview: safePreview,
-          dashboardUrl: `${url}/dashboard`,
+          dashboardUrl: `${url.replace(/\/$/, '')}/doctor/dashboard`,
         },
       });
     } catch (err) {
