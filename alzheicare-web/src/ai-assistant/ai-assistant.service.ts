@@ -182,9 +182,13 @@ export class AiAssistantService {
   ): Promise<AiPatientContext> {
     const resolvedRole = await this.resolveUserRole(userId, userRole);
     const patient = await this.loadPatient(userId, resolvedRole, patientId);
-
+  
+    const sessionKey = patientId
+      ? `${userId}_p${patientId}`
+      : String(userId);
+  
     return {
-      sub: String(userId),
+      sub: sessionKey,           
       role: this.mapRole(resolvedRole),
       patient_id: String(patient.id),
       patient_name: `${patient.user.firstName} ${patient.user.secondName}`.trim(),
