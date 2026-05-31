@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { MailerService } from '@nestjs-modules/mailer';
-import { EventEmitter } from 'events';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Observable, fromEvent, map } from 'rxjs';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type {
@@ -30,11 +30,11 @@ type NotificationEvent = {
 @Injectable()
 export class NotificationService {
   private readonly logger = new Logger('NotificationService');
-  private readonly eventEmitter = new EventEmitter();
 
   constructor(
     private mailerService: MailerService,
     private prisma: PrismaService,
+    private eventEmitter: EventEmitter2,
   ) {}
 
   subscribe(userId: number): Observable<NotificationEvent> {

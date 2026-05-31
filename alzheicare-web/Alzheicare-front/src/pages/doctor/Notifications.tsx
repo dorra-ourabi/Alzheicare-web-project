@@ -1,124 +1,263 @@
-import { useState } from 'react'
-import DoctorSidebar from '../../components/doctor/Sidebar'
-import NotificationItem from '../../components/shared/NotificationItem'
-import { UserPlus, Calendar, Brain, Bell } from 'lucide-react'
+import { useEffect, useMemo, useState } from "react";
+import DoctorSidebar from "../../components/doctor/Sidebar";
+import NotificationItem from "../../components/shared/NotificationItem";
+import {
+  Bell,
+  Calendar,
+  MessageSquare,
+  UserPlus,
+  UserCheck,
+  UserX,
+  Pill,
+  Info,
+} from "lucide-react";
+import { useAuth } from "../../context/useAuth";
+import { API_BASE_URL } from "../../lib/api";
+import {
+  deleteNotification,
+  fetchNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
+  openNotificationsStream,
+  type NotificationDto,
+  type NotificationStreamMessage,
+  type NotificationType,
+} from "../../api/notifications";
 
-interface Notification {
-  id: number
-  type: 'request' | 'appointment' | 'mri'
-  title: string
-  description: string
-  time: string
-  read: boolean
-}
+type Filter = "all" | "unread" | NotificationType;
 
-const initialNotifications: Notification[] = [
-  {
-    id: 1,
-    type: 'request',
-    title: 'New Connection Request',
-    description: 'Sophie Thompson sent you a follow request',
-    time: 'Just now',
-    read: false,
+const typeConfig: Record<
+  NotificationType,
+  { icon: any; iconBg: string; iconColor: string; label: string }
+> = {
+  NEW_MESSAGE: {
+    icon: MessageSquare,
+    iconBg: "bg-blue-100",
+    iconColor: "text-blue-500",
+    label: "Messages",
   },
-  {
-    id: 2,
-    type: 'appointment',
-    title: 'Appointment in 1 Hour',
-    description: 'Check-up with Margaret J. Thompson at 10:30 AM. Caregiver: Sophie Thompson.',
-    time: '09:30',
-    read: false,
+  INVITATION_RECEIVED: {
+    icon: UserPlus,
+    iconBg: "bg-emerald-100",
+    iconColor: "text-emerald-500",
+    label: "Invites",
   },
-  {
-    id: 3,
-    type: 'request',
-    title: 'New Connection Request',
-    description: 'Marie Dupont sent you a follow request',
-    time: 'Yesterday',
-    read: false,
+  INVITATION_ACCEPTED: {
+    icon: UserCheck,
+    iconBg: "bg-emerald-100",
+    iconColor: "text-emerald-500",
+    label: "Invites",
   },
-  {
-    id: 4,
-    type: 'appointment',
-    title: 'Upcoming Appointment',
-    description: 'Consultation with Robert H. Chen scheduled for April 18 at 09:00 AM.',
-    time: 'Apr 14',
-    read: true,
+  INVITATION_REJECTED: {
+    icon: UserX,
+    iconBg: "bg-rose-100",
+    iconColor: "text-rose-500",
+    label: "Invites",
   },
-  {
-    id: 5,
-    type: 'mri',
-    title: 'MRI Classification Done',
-    description: 'Scan classified as Moderate stage with 91% confidence.',
-    time: 'Apr 13',
-    read: true,
+  CALENDAR_REMINDER: {
+    icon: Calendar,
+    iconBg: "bg-violet-100",
+    iconColor: "text-violet-500",
+    label: "Calendar",
   },
-]
+  MEDICATION_DUE: {
+    icon: Pill,
+    iconBg: "bg-blue-100",
+    iconColor: "text-blue-500",
+    label: "Medication",
+  },
+  SYSTEM: {
+    icon: Info,
+    iconBg: "bg-slate-100",
+    iconColor: "text-slate-500",
+    label: "System",
+  },
+};
 
-const typeConfig = {
-  request: { icon: UserPlus, iconBg: 'bg-emerald-100', iconColor: 'text-emerald-500' },
-  appointment: { icon: Calendar, iconBg: 'bg-violet-100', iconColor: 'text-violet-500' },
-  mri: { icon: Brain, iconBg: 'bg-blue-100', iconColor: 'text-blue-500' },
-}
-
-type Filter = 'all' | 'unread' | Notification['type']
+const formatTime = (value: string) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString();
+};
 
 export default function DoctorNotifications() {
-  const [notifications, setNotifications] = useState<Notification[]>(initialNotifications)
-  const [filter, setFilter] = useState<Filter>('all')
+  const [notifications, setNotifications] = useState<NotificationDto[]>([]);
+  const [filter, setFilter] = useState<Filter>("all");
+  const { accessToken: token } = useAuth();
 
-  const unreadCount = notifications.filter((n) => !n.read).length
+  const handleConnectTelegram = async () => {
+    try {
+      if (!token) {
+        window.alert("Please sign in to continue.");
+        return;
+      }
 
-  const markRead = (id: number) => {
-    setNotifications((prev) => prev.map((n) => n.id === id ? { ...n, read: true } : n))
-  }
+      const res = await fetch(`${API_BASE_URL}/telegram/link`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
-  const deleteNotif = (id: number) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== id))
-  }
+      if (!res.ok) {
+        throw new Error("Failed to fetch Telegram link");
+      }
 
-  const markAllRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
-  }
+      const data = await res.json();
+      const url = data?.url;
+      if (!url) {
+        throw new Error("Telegram URL missing from response");
+      }
+
+      window.open(url, "_blank");
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  useEffect(() => {
+    if (!token) return;
+    fetchNotifications(token)
+      .then((items) => setNotifications(items))
+      .catch(() => {});
+  }, [token]);
+
+  useEffect(() => {
+    if (!token) return;
+    let isActive = true;
+    let source: EventSource | null = null;
+    let retryTimeout: number | undefined;
+
+    const connect = () => {
+      if (!isActive) return;
+      source = openNotificationsStream(token);
+
+      source.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data) as
+            | NotificationStreamMessage
+            | NotificationDto;
+          const notif =
+            (payload as NotificationStreamMessage).type === "notification:new"
+              ? (payload as NotificationStreamMessage).notification
+              : (payload as NotificationDto);
+          if (notif && typeof notif.id === "number") {
+            setNotifications((prev) => {
+              if (prev.some((item) => item.id === notif.id)) {
+                return prev;
+              }
+              return [notif, ...prev];
+            });
+          }
+        } catch {
+          // Ignore malformed SSE payloads.
+        }
+      };
+
+      source.onerror = () => {
+        source?.close();
+        source = null;
+        if (isActive) {
+          retryTimeout = window.setTimeout(connect, 3000);
+        }
+      };
+    };
+
+    connect();
+
+    return () => {
+      isActive = false;
+      if (retryTimeout) window.clearTimeout(retryTimeout);
+      source?.close();
+    };
+  }, [token]);
+
+  const unreadCount = useMemo(
+    () => notifications.filter((n) => !n.isRead).length,
+    [notifications],
+  );
+
+  const markRead = async (id: number) => {
+    if (!token) return;
+    try {
+      await markNotificationRead(id, token);
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)),
+      );
+      window.dispatchEvent(new Event("notifications:refresh"));
+    } catch {
+      // Ignore errors for now.
+    }
+  };
+
+  const deleteNotif = async (id: number) => {
+    if (!token) return;
+    try {
+      await deleteNotification(id, token);
+      setNotifications((prev) => prev.filter((n) => n.id !== id));
+      window.dispatchEvent(new Event("notifications:refresh"));
+    } catch {
+      // Ignore errors for now.
+    }
+  };
+
+  const markAllRead = async () => {
+    if (!token) return;
+    try {
+      await markAllNotificationsRead(token);
+      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+      window.dispatchEvent(new Event("notifications:refresh"));
+    } catch {
+      // Ignore errors for now.
+    }
+  };
 
   const filtered = notifications.filter((n) => {
-    if (filter === 'all') return true
-    if (filter === 'unread') return !n.read
-    return n.type === filter
-  })
+    if (filter === "all") return true;
+    if (filter === "unread") return !n.isRead;
+    return n.type === filter;
+  });
 
   const filters: { key: Filter; label: string }[] = [
-    { key: 'all', label: 'All' },
-    { key: 'unread', label: `Unread (${unreadCount})` },
-    { key: 'request', label: 'Requests' },
-    { key: 'appointment', label: 'Appointments' },
-    { key: 'mri', label: 'MRI Results' },
-  ]
+    { key: "all", label: "All" },
+    { key: "unread", label: `Unread (${unreadCount})` },
+    { key: "NEW_MESSAGE", label: "Messages" },
+    { key: "INVITATION_RECEIVED", label: "Invites" },
+    { key: "CALENDAR_REMINDER", label: "Calendar" },
+    { key: "MEDICATION_DUE", label: "Medication" },
+    { key: "SYSTEM", label: "System" },
+  ];
 
   return (
     <div className="flex min-h-screen bg-[#f4f7fb]">
       <DoctorSidebar />
       <main className="flex-1 p-6 overflow-y-auto">
-
-        {/* Header */}
         <div className="flex items-center justify-between mb-5">
           <div>
             <h1 className="text-xl font-bold text-gray-900">Notifications</h1>
             <p className="text-xs text-gray-400">
-              {unreadCount > 0 ? `${unreadCount} unread notifications` : 'All caught up!'}
+              {unreadCount > 0
+                ? `${unreadCount} unread notifications`
+                : "All caught up!"}
             </p>
           </div>
-          {unreadCount > 0 && (
+          <div className="flex items-center gap-3">
             <button
-              onClick={markAllRead}
-              className="text-sm text-[#1a6fb5] font-medium hover:underline"
+              onClick={handleConnectTelegram}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-medium text-[#1a6fb5] bg-white border border-gray-200 hover:border-[#1a6fb5]/40 hover:text-[#1a6fb5] transition"
             >
-              Mark all as read
+              Connect Telegram
             </button>
-          )}
+            {unreadCount > 0 && (
+              <button
+                onClick={markAllRead}
+                className="text-sm text-[#1a6fb5] font-medium hover:underline"
+              >
+                Mark all as read
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* Filters */}
         <div className="flex flex-wrap gap-2 mb-5">
           {filters.map(({ key, label }) => (
             <button
@@ -126,8 +265,8 @@ export default function DoctorNotifications() {
               onClick={() => setFilter(key)}
               className={`px-4 py-1.5 rounded-full text-xs font-medium transition-all ${
                 filter === key
-                  ? 'bg-[#1a6fb5] text-white shadow-md shadow-[#1a6fb5]/20'
-                  : 'bg-white text-gray-500 border border-gray-200 hover:border-[#1a6fb5]/40'
+                  ? "bg-[#1a6fb5] text-white shadow-md shadow-[#1a6fb5]/20"
+                  : "bg-white text-gray-500 border border-gray-200 hover:border-[#1a6fb5]/40"
               }`}
             >
               {label}
@@ -135,7 +274,6 @@ export default function DoctorNotifications() {
           ))}
         </div>
 
-        {/* Notifications List */}
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-center">
             <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center mb-3">
@@ -146,64 +284,25 @@ export default function DoctorNotifications() {
         ) : (
           <div className="flex flex-col gap-3">
             {filtered.map((notif) => {
-              const { icon, iconBg, iconColor } = typeConfig[notif.type]
-               // Cas spécial : request non lue → affiche Accept / Decline
-              if (notif.type === 'request' && !notif.read) {
-                return (
-                  <div
-                    key={notif.id}
-                    className="flex items-start gap-4 p-4 rounded-2xl border bg-white border-[#1a6fb5]/20 shadow-sm"
-                  >
-                    <div className="p-2.5 rounded-xl shrink-0 bg-emerald-100">
-                      <UserPlus size={18} className="text-emerald-500" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="text-sm font-medium text-gray-800">{notif.title}</p>
-                        <span className="text-xs text-gray-400 shrink-0">{notif.time}</span>
-                      </div>
-                      <p className="text-xs text-gray-400 mt-0.5 leading-relaxed">
-                        {notif.description}
-                      </p>
-                      <div className="flex gap-2 mt-3">
-                        <button
-                          onClick={() => markRead(notif.id)}
-                          className="px-4 py-1.5 rounded-xl text-xs font-semibold text-white bg-[#1a6fb5] hover:bg-[#1557a0] transition"
-                        >
-                          Accept
-                        </button>
-                        <button
-                          onClick={() => deleteNotif(notif.id)}
-                          className="px-4 py-1.5 rounded-xl text-xs font-semibold text-gray-500 bg-gray-100 hover:bg-red-50 hover:text-red-400 transition"
-                        >
-                          Decline
-                        </button>
-                      </div>
-                    </div>
-                    <span className="w-2 h-2 rounded-full bg-[#1a6fb5] shrink-0 mt-1.5" />
-                  </div>
-                )
-              }
-
-              // Cas normal → NotificationItem standard
+              const config = typeConfig[notif.type];
               return (
                 <NotificationItem
                   key={notif.id}
-                  icon={icon}
-                  iconBg={iconBg}
-                  iconColor={iconColor}
+                  icon={config.icon}
+                  iconBg={config.iconBg}
+                  iconColor={config.iconColor}
                   title={notif.title}
-                  description={notif.description}
-                  time={notif.time}
-                  read={notif.read}
+                  description={notif.body ?? ""}
+                  time={formatTime(notif.createdAt)}
+                  read={notif.isRead}
                   onRead={() => markRead(notif.id)}
                   onDelete={() => deleteNotif(notif.id)}
                 />
-              )
+              );
             })}
           </div>
         )}
       </main>
     </div>
-  )
+  );
 }

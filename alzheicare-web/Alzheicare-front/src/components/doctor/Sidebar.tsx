@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
   MessageSquare, Calendar, Brain, Bot, Bell, LogOut,
@@ -6,6 +6,11 @@ import {
 } from 'lucide-react'
 import logo from '../../assets/logo_alzheicare.png'
 import { useAuth } from '../../context/useAuth'
+import {
+  fetchUnreadCount,
+  openNotificationsStream,
+  type NotificationStreamMessage,
+} from '../../api/notifications'
 
 const navItems = [
   { icon: MessageSquare, label: 'Patient Messages', path: '/doctor/dashboard' },
@@ -19,7 +24,67 @@ export default function DoctorSidebar() {
   const [collapsed, setCollapsed] = useState(false)
   const navigate = useNavigate()
   const location = useLocation()
-  const { logout, user } = useAuth()
+  const { logout, user, accessToken: token } = useAuth()
+  const [unreadCount, setUnreadCount] = useState(0)
+
+  useEffect(() => {
+    if (!token) return
+
+    const load = () => {
+      fetchUnreadCount(token)
+        .then(({ unreadCount }) => setUnreadCount(unreadCount))
+        .catch(() => {})
+    }
+
+    load()
+    window.addEventListener('notifications:refresh', load)
+    return () => window.removeEventListener('notifications:refresh', load)
+  }, [token])
+
+  useEffect(() => {
+    if (!token) return
+    let isActive = true
+    let source: EventSource | null = null
+    let retryTimeout: number | undefined
+
+    const connect = () => {
+      if (!isActive) return
+      source = openNotificationsStream(token)
+
+      source.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data) as
+            | NotificationStreamMessage
+            | { id?: number }
+          const notif =
+            payload && (payload as NotificationStreamMessage).type === 'notification:new'
+              ? (payload as NotificationStreamMessage).notification
+              : (payload as { id?: number })
+          if (notif && typeof notif.id === 'number') {
+            setUnreadCount((prev) => prev + 1)
+          }
+        } catch {
+          // Ignore malformed SSE payloads.
+        }
+      }
+
+      source.onerror = () => {
+        source?.close()
+        source = null
+        if (isActive) {
+          retryTimeout = window.setTimeout(connect, 3000)
+        }
+      }
+    }
+
+    connect()
+
+    return () => {
+      isActive = false
+      if (retryTimeout) window.clearTimeout(retryTimeout)
+      source?.close()
+    }
+  }, [token])
 
   const doctorDisplayName =
     [user?.firstName, user?.secondName].filter(Boolean).join(' ').trim() ||
@@ -56,6 +121,7 @@ export default function DoctorSidebar() {
       <nav className="flex flex-col gap-1 px-2 py-3 flex-1">
         {navItems.map(({ icon: Icon, label, path }) => {
           const active = location.pathname === path
+          const showBadge = path === '/doctor/notifications' && unreadCount > 0
           return (
             <button
               key={path}
@@ -66,7 +132,12 @@ export default function DoctorSidebar() {
                   : 'text-gray-500 hover:bg-[#1a6fb5]/8 hover:text-[#1a6fb5]'
               }`}
             >
-              <Icon size={18} className="shrink-0" />
+              <span className="relative shrink-0">
+                <Icon size={18} className="shrink-0" />
+                {showBadge && (
+                  <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red-500" />
+                )}
+              </span>
               {!collapsed && <span>{label}</span>}
             </button>
           )

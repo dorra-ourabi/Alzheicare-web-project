@@ -1,120 +1,235 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Sidebar from "../../components/caregiver/Sidebar";
 import NotificationItem from "../../components/shared/NotificationItem";
 import {
   Pill,
   Calendar,
   UserCheck,
+  MapPin,
   Bell,
+  MessageSquare,
+  UserPlus,
+  UserX,
+  Info,
 } from "lucide-react";
+import { useAuth } from "../../context/useAuth";
+import { API_BASE_URL } from "../../lib/api";
+import {
+  deleteNotification,
+  fetchNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
+  openNotificationsStream,
+  type NotificationDto,
+  type NotificationStreamMessage,
+  type NotificationType,
+} from "../../api/notifications";
 
-interface Notification {
-  id: number;
-  type: "medication" | "appointment" | "doctor";
-  title: string;
-  description: string;
-  time: string;
-  read: boolean;
+interface Props {
+  onSimulate: () => void;
 }
 
+type Filter = "all" | "unread" | NotificationType;
 
-const initialNotifications: Notification[] = [
-  {
-    id: 1,
-    type: "medication",
-    title: "Medication Reminder",
-    description: "Time to administer Lisinopril 10mg to Margaret.",
-    time: "08:00",
-    read: false,
+const typeConfig: Record<
+  NotificationType,
+  { icon: any; iconBg: string; iconColor: string; label: string }
+> = {
+  NEW_MESSAGE: {
+    icon: MessageSquare,
+    iconBg: "bg-blue-100",
+    iconColor: "text-blue-500",
+    label: "Messages",
   },
-  {
-    id: 2,
-    type: "appointment",
-    title: "Appointment Tomorrow",
-    description: "Dr. Moreau — Check-up scheduled for April 16 at 10:30 AM.",
-    time: "Yesterday",
-    read: false,
+  INVITATION_RECEIVED: {
+    icon: UserPlus,
+    iconBg: "bg-emerald-100",
+    iconColor: "text-emerald-500",
+    label: "Invites",
   },
-  {
-    id: 3,
-    type: "doctor",
-    title: "Connection Request Accepted",
-    description:
-      "Dr. A. Moreau accepted your follow request. You can now chat.",
-    time: "Apr 14",
-    read: true,
-  },
-  {
-    id: 4,
-    type: "medication",
-    title: "Medication Reminder",
-    description: "Time to administer Metformin 500mg to Margaret.",
-    time: "Apr 14",
-    read: true,
-  },
-  {
-    id: 5,
-    type: "appointment",
-    title: "Appointment Completed",
-    description: "Neurologist visit on April 10 has been marked as completed.",
-    time: "Apr 10",
-    read: true,
-  },
-];
-
-const typeConfig = {
-  medication: { icon: Pill, iconBg: "bg-blue-100", iconColor: "text-blue-500" },
-  appointment: {
-    icon: Calendar,
-    iconBg: "bg-violet-100",
-    iconColor: "text-violet-500",
-  },
-  doctor: {
+  INVITATION_ACCEPTED: {
     icon: UserCheck,
     iconBg: "bg-emerald-100",
     iconColor: "text-emerald-500",
+    label: "Invites",
+  },
+  INVITATION_REJECTED: {
+    icon: UserX,
+    iconBg: "bg-rose-100",
+    iconColor: "text-rose-500",
+    label: "Invites",
+  },
+  CALENDAR_REMINDER: {
+    icon: Calendar,
+    iconBg: "bg-violet-100",
+    iconColor: "text-violet-500",
+    label: "Calendar",
+  },
+  MEDICATION_DUE: {
+    icon: Pill,
+    iconBg: "bg-blue-100",
+    iconColor: "text-blue-500",
+    label: "Medication",
+  },
+  SYSTEM: {
+    icon: Info,
+    iconBg: "bg-slate-100",
+    iconColor: "text-slate-500",
+    label: "System",
   },
 };
 
-type Filter = "all" | "unread" | Notification["type"];
-
-type CaregiverNotificationsProps = {
-  onSimulate?: () => void;
+const formatTime = (value: string) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString();
 };
 
-export default function CaregiverNotifications({ onSimulate }: CaregiverNotificationsProps) {
-  const [notifications, setNotifications] =
-    useState<Notification[]>(initialNotifications);
+export default function CaregiverNotifications({ onSimulate }: Props) {
+  const [notifications, setNotifications] = useState<NotificationDto[]>([]);
   const [filter, setFilter] = useState<Filter>("all");
+  const { accessToken: token } = useAuth();
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
+  const handleConnectTelegram = async () => {
+    try {
+      if (!token) {
+        window.alert("Please sign in to continue.");
+        return;
+      }
 
-  const markRead = (id: number) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, read: true } : n)),
-    );
+      const res = await fetch(`${API_BASE_URL}/telegram/link`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to fetch Telegram link");
+      }
+
+      const data = await res.json();
+      const url = data?.url;
+      if (!url) {
+        throw new Error("Telegram URL missing from response");
+      }
+
+      window.open(url, "_blank");
+    } catch (err) {
+      console.error(err);
+    }
   };
 
-  const deleteNotif = (id: number) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
+  useEffect(() => {
+    if (!token) return;
+    fetchNotifications(token)
+      .then((items) => setNotifications(items))
+      .catch(() => {});
+  }, [token]);
+
+  useEffect(() => {
+    if (!token) return;
+    let isActive = true;
+    let source: EventSource | null = null;
+    let retryTimeout: number | undefined;
+
+    const connect = () => {
+      if (!isActive) return;
+      source = openNotificationsStream(token);
+
+      source.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data) as
+            | NotificationStreamMessage
+            | NotificationDto;
+          const notif =
+            (payload as NotificationStreamMessage).type === "notification:new"
+              ? (payload as NotificationStreamMessage).notification
+              : (payload as NotificationDto);
+          if (notif && typeof notif.id === "number") {
+            setNotifications((prev) => {
+              if (prev.some((item) => item.id === notif.id)) {
+                return prev;
+              }
+              return [notif, ...prev];
+            });
+          }
+        } catch {
+          // Ignore malformed SSE payloads.
+        }
+      };
+
+      source.onerror = () => {
+        source?.close();
+        source = null;
+        if (isActive) {
+          retryTimeout = window.setTimeout(connect, 3000);
+        }
+      };
+    };
+
+    connect();
+
+    return () => {
+      isActive = false;
+      if (retryTimeout) window.clearTimeout(retryTimeout);
+      source?.close();
+    };
+  }, [token]);
+
+  const unreadCount = useMemo(
+    () => notifications.filter((n) => !n.isRead).length,
+    [notifications],
+  );
+
+  const markRead = async (id: number) => {
+    if (!token) return;
+    try {
+      await markNotificationRead(id, token);
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)),
+      );
+      window.dispatchEvent(new Event("notifications:refresh"));
+    } catch {
+      // Ignore errors for now.
+    }
   };
 
-  const markAllRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+  const deleteNotif = async (id: number) => {
+    if (!token) return;
+    try {
+      await deleteNotification(id, token);
+      setNotifications((prev) => prev.filter((n) => n.id !== id));
+      window.dispatchEvent(new Event("notifications:refresh"));
+    } catch {
+      // Ignore errors for now.
+    }
+  };
+
+  const markAllRead = async () => {
+    if (!token) return;
+    try {
+      await markAllNotificationsRead(token);
+      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+      window.dispatchEvent(new Event("notifications:refresh"));
+    } catch {
+      // Ignore errors for now.
+    }
   };
 
   const filtered = notifications.filter((n) => {
     if (filter === "all") return true;
-    if (filter === "unread") return !n.read;
+    if (filter === "unread") return !n.isRead;
     return n.type === filter;
   });
 
   const filters: { key: Filter; label: string }[] = [
     { key: "all", label: "All" },
     { key: "unread", label: `Unread (${unreadCount})` },
-    { key: "medication", label: "Medications" },
-    { key: "appointment", label: "Appointments" },
-    { key: "doctor", label: "Doctors" },
+    { key: "NEW_MESSAGE", label: "Messages" },
+    { key: "INVITATION_RECEIVED", label: "Invites" },
+    { key: "CALENDAR_REMINDER", label: "Calendar" },
+    { key: "MEDICATION_DUE", label: "Medication" },
+    { key: "SYSTEM", label: "System" },
   ];
 
   return (
@@ -122,7 +237,6 @@ export default function CaregiverNotifications({ onSimulate }: CaregiverNotifica
       <Sidebar />
 
       <main className="flex-1 p-6 overflow-y-auto">
-        {/* Header */}
         <div className="flex items-center justify-between mb-5">
           <div>
             <h1 className="text-xl font-bold text-gray-900">Notifications</h1>
@@ -132,16 +246,21 @@ export default function CaregiverNotifications({ onSimulate }: CaregiverNotifica
                 : "All caught up!"}
             </p>
           </div>
-          <div className="flex items-center gap-3">            
+          <div className="flex items-center gap-3">
+            <button
+              onClick={onSimulate}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-medium text-red-500 bg-red-50 border border-red-100 hover:bg-red-100 transition"
+            >
+              <MapPin size={13} />
+              Simulate Alert
+            </button>
 
-            {onSimulate && (
-              <button
-                onClick={onSimulate}
-                className="text-sm text-emerald-600 font-medium hover:underline"
-              >
-                Simulate geofence alert
-              </button>
-            )}
+            <button
+              onClick={handleConnectTelegram}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-medium text-[#1a6fb5] bg-white border border-gray-200 hover:border-[#1a6fb5]/40 hover:text-[#1a6fb5] transition"
+            >
+              Connect Telegram
+            </button>
 
             {unreadCount > 0 && (
               <button
@@ -154,7 +273,6 @@ export default function CaregiverNotifications({ onSimulate }: CaregiverNotifica
           </div>
         </div>
 
-        {/* Filters */}
         <div className="flex flex-wrap gap-2 mb-5">
           {filters.map(({ key, label }) => (
             <button
@@ -171,7 +289,6 @@ export default function CaregiverNotifications({ onSimulate }: CaregiverNotifica
           ))}
         </div>
 
-        {/* Notifications List */}
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-center">
             <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center mb-3">
@@ -182,17 +299,17 @@ export default function CaregiverNotifications({ onSimulate }: CaregiverNotifica
         ) : (
           <div className="flex flex-col gap-3">
             {filtered.map((notif) => {
-              const { icon, iconBg, iconColor } = typeConfig[notif.type];
+              const config = typeConfig[notif.type];
               return (
                 <NotificationItem
                   key={notif.id}
-                  icon={icon}
-                  iconBg={iconBg}
-                  iconColor={iconColor}
+                  icon={config.icon}
+                  iconBg={config.iconBg}
+                  iconColor={config.iconColor}
                   title={notif.title}
-                  description={notif.description}
-                  time={notif.time}
-                  read={notif.read}
+                  description={notif.body ?? ""}
+                  time={formatTime(notif.createdAt)}
+                  read={notif.isRead}
                   onRead={() => markRead(notif.id)}
                   onDelete={() => deleteNotif(notif.id)}
                 />
