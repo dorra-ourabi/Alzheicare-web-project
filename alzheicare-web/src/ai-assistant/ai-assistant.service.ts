@@ -116,7 +116,7 @@ export class AiAssistantService {
     return response.arrayBuffer();
   }
 
-  async ragStatus(userId: number, userRole: UserRole, patientId?: number) {
+  async ragStatus(userId: number, userRole: UserRole | undefined, patientId?: number) {
     const token = await this.buildAiToken(userId, userRole, patientId);
     return this.request('GET', '/rag/status', { token });
   }
@@ -135,7 +135,7 @@ export class AiAssistantService {
     });
   }
 
-  async ragReload(userId: number, userRole: UserRole, patientId?: number) {
+  async ragReload(userId: number, userRole: UserRole | undefined, patientId?: number) {
     const token = await this.buildAiToken(userId, userRole, patientId);
     return this.request('POST', '/rag/reload', { token });
   }
@@ -145,12 +145,7 @@ export class AiAssistantService {
     userRole: UserRole | undefined,
     patientId?: number,
   ): Promise<string> {
-    const resolvedRole = await this.resolveUserRole(userId, userRole);
-    const context = await this.resolvePatientContext(
-      userId,
-      resolvedRole,
-      patientId,
-    );
+    const context = await this.resolvePatientContext(userId, userRole, patientId);
     const secret =
       this.configService.get<string>('AI_JWT_SECRET') || 'dev_secret';
 
@@ -185,11 +180,12 @@ export class AiAssistantService {
     userRole: UserRole | undefined,
     patientId?: number,
   ): Promise<AiPatientContext> {
-    const patient = await this.loadPatient(userId, userRole, patientId);
+    const resolvedRole = await this.resolveUserRole(userId, userRole);
+    const patient = await this.loadPatient(userId, resolvedRole, patientId);
 
     return {
       sub: String(userId),
-      role: this.mapRole(userRole),
+      role: this.mapRole(resolvedRole),
       patient_id: String(patient.id),
       patient_name: `${patient.user.firstName} ${patient.user.secondName}`.trim(),
       patient_age: this.calculateAge(patient.dateOfBirth),
@@ -199,7 +195,7 @@ export class AiAssistantService {
 
   private async loadPatient(
     userId: number,
-    userRole: UserRole | undefined,
+    userRole: UserRole,
     patientId?: number,
   ) {
     if (userRole === UserRole.Patient) {
