@@ -9,16 +9,16 @@ export class PatientDashboardIdentityType {
   @Field()
   secondName!: string;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   dateOfBirth!: string | null;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   dateOfDiagnosis!: string | null;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   address!: string | null;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   caregiversNumbers!: string | null;
 }
 
@@ -30,10 +30,10 @@ export class PatientDashboardChronicDiseaseType {
   @Field()
   diseaseName!: string;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   additionalDisease!: string | null;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   diagnosedAt!: string | null;
 }
 
@@ -45,16 +45,17 @@ export class PatientDashboardMedicationType {
   @Field()
   name!: string;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   dosage!: string | null;
 
   @Field()
   startDate!: string;
 
-  @Field({ nullable: true })
+
+  @Field(() => String, { nullable: true })
   endDate!: string | null;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   notes!: string | null;
 }
 
@@ -96,7 +97,7 @@ export class PatientDashboardMoodEntryType {
   @Field(() => MoodLevel)
   mood!: MoodLevel;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   notes!: string | null;
 
   @Field()
@@ -117,13 +118,13 @@ export class PatientDashboardSleepRecordType {
   @Field(() => SleepQuality)
   quality!: SleepQuality;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   bedTime!: string | null;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   wakeTime!: string | null;
 
-  @Field({ nullable: true })
+  @Field(() => String, { nullable: true })
   notes!: string | null;
 }
 

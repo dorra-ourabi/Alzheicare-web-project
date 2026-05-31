@@ -241,39 +241,129 @@ export class DashboardService {
     });
   }
   async getPatientDashboard(userId: number) {
-  const patient = await this.prisma.patient.findUnique({
-    where: { userId },
-    include: {
-      user: true,
-      chronicDiseases: { orderBy: { diagnosisDate: 'desc' } },
-      medications: { orderBy: { startDate: 'desc' } },
-      dailyLogs: {
-        include: {
-          moodEntry: true,
-          behaviorEntries: true,
-          weightRecord: true,
-          sleepRecord: true,
+    const patient = await this.prisma.patient.findUnique({
+      where: { userId },
+      include: {
+        user: true,
+        chronicDiseases: { orderBy: { diagnosisDate: 'desc' } },
+        medications: { orderBy: { startDate: 'desc' } },
+        allergies: true,
+        dailyLogs: {
+          include: {
+            moodEntry: true,
+            behaviorEntries: true,
+            weightRecord: true,
+            sleepRecord: true,
+          },
+          orderBy: { date: 'desc' },
+          take: 30,
         },
-        orderBy: { date: 'desc' },
-        take: 30,
       },
-    },
-  });
+    });
 
-  if (!patient) throw new ForbiddenException('Patient profile not found');
+    if (!patient) throw new ForbiddenException('Patient profile not found');
 
-  return {
-    id: patient.id,
-    firstName: patient.user.firstName,
-    secondName: patient.user.secondName,
-    email: patient.user.email,
-    dateOfBirth: patient.dateOfBirth,
-    phone: patient.caregiversNumbers,
-    chronicDiseases: patient.chronicDiseases,
-    medications: patient.medications,
-    dailyLogs: patient.dailyLogs,
-  };
-}
+    const patientIdentity = {
+      firstName: patient.user.firstName,
+      secondName: patient.user.secondName,
+      dateOfBirth: patient.dateOfBirth ? patient.dateOfBirth.toISOString() : null,
+      dateOfDiagnosis: patient.dateOfDiagnosis ? patient.dateOfDiagnosis.toISOString() : null,
+      address: patient.address ?? null,
+      caregiversNumbers: patient.caregiversNumbers ?? null,
+    };
+
+    const chronicDiseases = (patient.chronicDiseases || []).map((cd) => ({
+      id: cd.id,
+      diseaseName: cd.diseaseType,
+      additionalDisease: cd.additionalDisease ?? null,
+      diagnosedAt: cd.diagnosisDate ? cd.diagnosisDate.toISOString() : null,
+    }));
+
+    const medications = (patient.medications || []).map((m) => ({
+      id: m.id,
+      name: m.name,
+      dosage: m.dosage ?? null,
+      startDate: m.startDate.toISOString(),
+      endDate: m.endDate ? m.endDate.toISOString() : null,
+      notes: m.notes ?? null,
+    }));
+
+    const allergies = (patient.allergies || []).map((a) => a.name);
+
+    const behaviorEntries = (patient.dailyLogs || []).map((dl) => {
+      const dateStr = dl.date.toISOString();
+      const counts: Record<string, number> = { aggressiveness: 0, withdrawal: 0, anxiety: 0, repetitive_acts: 0 };
+      dl.behaviorEntries?.forEach((be) => {
+        counts[be.behavior] = (counts[be.behavior] ?? 0) + 1;
+      });
+      return {
+        date: dateStr,
+        aggressiveness: counts.aggressiveness ?? 0,
+        withdrawal: counts.withdrawal ?? 0,
+        anxiety: counts.anxiety ?? 0,
+        repetitive: counts.repetitive_acts ?? 0,
+      };
+    });
+
+    const weightEntries = (patient.dailyLogs || [])
+      .filter((dl) => dl.weightRecord)
+      .map((dl) => ({ date: dl.date.toISOString(), weight: dl.weightRecord!.weightKg }));
+
+    const moodEntries = (patient.dailyLogs || [])
+      .map((dl) => {
+        const me = dl.moodEntry;
+        if (!me) return null;
+        return {
+          id: me.id,
+          date: me.date.toISOString(),
+          mood: me.mood,
+          notes: me.notes ?? null,
+          recordedAt: me.recordedAt.toISOString(),
+        };
+      })
+      .filter((x) => x !== null) as Array<{
+      id: number;
+      date: string;
+      mood: string;
+      notes: string | null;
+      recordedAt: string;
+    }>;
+
+    const sleepRecords = (patient.dailyLogs || [])
+      .map((dl) => {
+        const sr = dl.sleepRecord;
+        if (!sr) return null;
+        return {
+          id: sr.id,
+          date: sr.date.toISOString(),
+          hoursSlept: sr.hoursSlept,
+          quality: sr.quality,
+          bedTime: sr.bedTime ?? null,
+          wakeTime: sr.wakeTime ?? null,
+          notes: sr.notes ?? null,
+        };
+      })
+      .filter((x) => x !== null) as Array<{
+      id: number;
+      date: string;
+      hoursSlept: number;
+      quality: string;
+      bedTime: string | null;
+      wakeTime: string | null;
+      notes: string | null;
+    }>;
+
+    return {
+      patient: patientIdentity,
+      chronicDiseases,
+      medications,
+      allergies,
+      behaviorEntries,
+      weightEntries,
+      moodEntries,
+      sleepRecords,
+    };
+  }
 
   async getMoodEntries(patientId: number): Promise<MoodEntry[]> {
     return await this.prisma.moodEntry.findMany({ where: { patientId }, orderBy: { date: 'desc' } });

@@ -7,6 +7,7 @@ import { ChronicDiseaseResolver } from './resolvers/chronic-disease.resolver.js'
 import { MedicationResolver } from './resolvers/medication.resolver.js';
 import { PatientResolver } from './resolvers/patient.resolver.js';
 import { DailyLogResolver } from './resolvers/daily-log.resolver.js';
+import { PatientDashboardResolver } from './resolvers/patient-dashboard.resolver.js';
 
 @Module({
   imports: [PrismaModule, AuthModule],
@@ -17,6 +18,7 @@ import { DailyLogResolver } from './resolvers/daily-log.resolver.js';
     MedicationResolver,
     PatientResolver,
     DailyLogResolver,
+    PatientDashboardResolver,
   ],
 })
 export class DashboardModule {}

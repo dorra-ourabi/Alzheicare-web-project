@@ -4,6 +4,7 @@ import {
   ExecutionContext,
   UnauthorizedException,
 } from '@nestjs/common';
+import { GqlExecutionContext } from '@nestjs/graphql';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 
@@ -15,7 +16,14 @@ export class JwtAuthGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context.switchToHttp().getRequest();
+    // Support both HTTP and GraphQL execution contexts
+    let request: any;
+    try {
+      const gqlCtx = GqlExecutionContext.create(context);
+      request = gqlCtx.getContext()?.req || context.switchToHttp().getRequest();
+    } catch {
+      request = context.switchToHttp().getRequest();
+    }
     if (this.isBypassEnabled()) {
       request.user = { sub: this.getBypassUserId() };
       return true;
