@@ -51,7 +51,6 @@ export class PatientDashboardMedicationType {
   @Field()
   startDate!: string;
 
-
   @Field(() => String, { nullable: true })
   endDate!: string | null;
 

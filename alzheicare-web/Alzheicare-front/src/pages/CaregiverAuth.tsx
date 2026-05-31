@@ -8,6 +8,15 @@ import { buildAuthUser, type AuthTokens } from '../lib/auth'
 
 type Tab = 'login' | 'register'
 
+// Mirrors the ChronicDiseaseType enum in prisma/schema.prisma
+const CONDITION_OPTIONS = [
+  { value: 'Hypertension', label: 'Hypertension' },
+  { value: 'Diabetes', label: 'Diabetes' },
+  { value: 'HeartDisease', label: 'Heart Disease' },
+  { value: 'Stroke', label: 'Stroke' },
+  { value: 'Other', label: 'Other' },
+] as const
+
 type CaregiverForm = {
   username: string
   firstName: string
@@ -15,6 +24,9 @@ type CaregiverForm = {
   email: string
   password: string
   phoneNumber: string
+  dateOfBirth: string
+  allergies: string
+  conditions: string[]
 }
 
 const initialForm: CaregiverForm = {
@@ -24,6 +36,9 @@ const initialForm: CaregiverForm = {
   email: '',
   password: '',
   phoneNumber: '',
+  dateOfBirth: '',
+  allergies: '',
+  conditions: [],
 }
 
 export default function CaregiverAuth() {
@@ -38,6 +53,21 @@ export default function CaregiverAuth() {
   const update = (field: keyof CaregiverForm, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }))
   }
+
+  const toggleCondition = (value: string) => {
+    setForm((prev) => ({
+      ...prev,
+      conditions: prev.conditions.includes(value)
+        ? prev.conditions.filter((c) => c !== value)
+        : [...prev.conditions, value],
+    }))
+  }
+
+  const toList = (value: string) =>
+    value
+      .split(',')
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0)
 
   const redirectForRole = (role: 'doctor' | 'caregiver') => {
     navigate(role === 'doctor' ? '/doctor/dashboard' : '/caregiver/dashboard')
@@ -64,6 +94,9 @@ export default function CaregiverAuth() {
                   email: form.email,
                   password: form.password,
                   phoneNumber: form.phoneNumber || undefined,
+                  dateOfBirth: form.dateOfBirth || undefined,
+                  allergies: toList(form.allergies),
+                  conditions: form.conditions.map((diseaseType) => ({ diseaseType })),
                 }),
         },
       )
@@ -192,6 +225,37 @@ export default function CaregiverAuth() {
                 </div>
                 <Field label="Email" value={form.email} onChange={(value) => update('email', value)} placeholder="caregiver@example.com" type="email" />
                 <Field label="Phone Number" value={form.phoneNumber} onChange={(value) => update('phoneNumber', value)} placeholder="+1 555 000 0000" />
+                <Field label="Date of Birth" value={form.dateOfBirth} onChange={(value) => update('dateOfBirth', value)} type="date" />
+
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Conditions</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {CONDITION_OPTIONS.map((option) => {
+                      const checked = form.conditions.includes(option.value)
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => toggleCondition(option.value)}
+                          className={`px-3 py-2 rounded-xl text-xs font-medium text-left transition-all ${
+                            checked
+                              ? 'text-white shadow-sm'
+                              : 'text-gray-600 hover:text-gray-800'
+                          }`}
+                          style={
+                            checked
+                              ? { background: 'linear-gradient(135deg, #1d9e75 0%, #0f7a5a 100%)' }
+                              : { background: '#f8faff', border: '1.5px solid #e8eef8' }
+                          }
+                        >
+                          {option.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                <Field label="Allergies (comma separated)" value={form.allergies} onChange={(value) => update('allergies', value)} placeholder="Penicillin, Peanuts" />
               </>
             )}
 

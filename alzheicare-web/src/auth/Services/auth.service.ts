@@ -224,19 +224,45 @@ export class AuthService {
 
         await tx.doctor.create({ data: doctorData });
       } else {
-        const patientData: {
-          userId: number;
-          phoneNumber?: string;
-        } = {
-          userId: createdUser.id,
-        };
-
         const patientDto = dto as CreatePatientDto;
-        if (patientDto.phoneNumber) {
-          patientData.phoneNumber = patientDto.phoneNumber;
-        }
 
-        await tx.patient.create({ data: patientData });
+        await tx.patient.create({
+          data: {
+            userId: createdUser.id,
+            ...(patientDto.phoneNumber
+              ? { phoneNumber: patientDto.phoneNumber }
+              : {}),
+            ...(patientDto.dateOfBirth
+              ? { dateOfBirth: new Date(patientDto.dateOfBirth) }
+              : {}),
+            ...(patientDto.allergies?.length
+              ? {
+                  allergies: {
+                    create: patientDto.allergies
+                      .map((name) => name.trim())
+                      .filter((name) => name.length > 0)
+                      .map((name) => ({ name })),
+                  },
+                }
+              : {}),
+            ...(patientDto.conditions?.length
+              ? {
+                  chronicDiseases: {
+                    create: patientDto.conditions.map((condition) => ({
+                      diseaseType: condition.diseaseType,
+                      diagnosisDate: condition.diagnosisDate
+                        ? new Date(condition.diagnosisDate)
+                        : new Date(),
+                      ...(condition.notes ? { notes: condition.notes } : {}),
+                      ...(condition.additionalDisease
+                        ? { additionalDisease: condition.additionalDisease }
+                        : {}),
+                    })),
+                  },
+                }
+              : {}),
+          },
+        });
       }
 
       return createdUser;
