@@ -1,9 +1,9 @@
 allowBuilds:
   '@apollo/protobufjs': true
-  '@nestjs/core': false
-  '@prisma/engines': false
+  '@nestjs/core': true
+  '@prisma/engines': true
   '@scarf/scarf': false
-  bcrypt: false
-  msgpackr-extract: set this to true or false
-  prisma: false
+  bcrypt: true
+  msgpackr-extract: true
+  prisma: true
   unrs-resolver: false

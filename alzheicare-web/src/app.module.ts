@@ -17,6 +17,7 @@ import { PrismaModule } from './prisma/prisma.module.js';
 import { NotificationModule } from './notification/notification.module.js';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { StripeModule } from './stripe/stripe.module.js';
+import { AiAssistantModule } from './ai-assistant/ai-assistant.module.js';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { StripeModule } from './stripe/stripe.module.js';
     DashboardModule,
     EventEmitterModule.forRoot(),
     StripeModule,
+    AiAssistantModule,
   ],
   controllers: [AppController],
   providers: [AppService],
