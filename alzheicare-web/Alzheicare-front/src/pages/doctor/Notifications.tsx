@@ -12,7 +12,7 @@ import {
   Info,
 } from "lucide-react";
 import { useAuth } from "../../context/useAuth";
-import { API_BASE_URL } from "../../lib/api";
+import { apiRequestWithAuth } from "../../lib/api";
 import {
   deleteNotification,
   fetchNotifications,
@@ -92,17 +92,11 @@ export default function DoctorNotifications() {
         return;
       }
 
-      const res = await fetch(`${API_BASE_URL}/telegram/link`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!res.ok) {
-        throw new Error("Failed to fetch Telegram link");
-      }
-
-      const data = await res.json();
+      const data = await apiRequestWithAuth<{ url: string }>(
+        "/telegram/link",
+        { method: "GET" },
+        token,
+      );
       const url = data?.url;
       if (!url) {
         throw new Error("Telegram URL missing from response");

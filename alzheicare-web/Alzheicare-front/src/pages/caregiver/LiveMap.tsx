@@ -1,26 +1,37 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import Sidebar from "../../components/caregiver/Sidebar";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 import {
   MapPin,
   Navigation,
   Shield,
   AlertTriangle,
   RefreshCw,
-  ZoomIn,
-  ZoomOut,
   Home,
+  Search,
 } from "lucide-react";
+import { useAuth } from "../../context/useAuth";
+import { fetchMe, updateMyLocation } from "../../api/users";
+
+import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
+import markerIcon from "leaflet/dist/images/marker-icon.png";
+import markerShadow from "leaflet/dist/images/marker-shadow.png";
+delete (L.Icon.Default.prototype as any)._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconUrl: markerIcon,
+  iconRetinaUrl: markerIcon2x,
+  shadowUrl: markerShadow,
+});
 
 type ZoneStatus = "safe" | "danger";
 
 interface PatientLocation {
-  x: number;
-  y: number;
+  lat: number;
+  lng: number;
   address: string;
   updatedAt: string;
 }
-
-
 
 const statusConfig: Record<
   ZoneStatus,
@@ -48,55 +59,287 @@ const statusConfig: Record<
   },
 };
 
+const SAFE_RADIUS_METERS = 300;
+
 interface Props {
-  onDanger: () => void
+  onDanger: () => void;
 }
 
 export default function CaregiverLiveMap({ onDanger }: Props) {
+  const { accessToken: token } = useAuth();
   const [status, setStatus] = useState<ZoneStatus>("safe");
+  const [homePosition, setHomePosition] = useState<{ lat: number; lng: number } | null>(null);
+  const [homeAddress, setHomeAddress] = useState("");
+  const [homeAddressInput, setHomeAddressInput] = useState("");
+  const [addressError, setAddressError] = useState<string | null>(null);
+  const [addressLoading, setAddressLoading] = useState(false);
+  const [mapReady, setMapReady] = useState(false);
+
   const [location, setLocation] = useState<PatientLocation>({
-    x: 52,
-    y: 48,
-    address: "Avenue Bourguiba, Bou Salem",
+    lat: 0,
+    lng: 0,
+    address: "Detecting location...",
     updatedAt: new Date().toLocaleTimeString("en-US", {
       hour: "2-digit",
       minute: "2-digit",
     }),
   });
   const [refreshing, setRefreshing] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
 
-  const refresh = () => {
-    setRefreshing(true);
-    setTimeout(() => {
-      setLocation((prev) => ({
-        ...prev,
-        updatedAt: new Date().toLocaleTimeString("en-US", {
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-      }));
-      setRefreshing(false);
-    }, 1000);
+  const mapRef = useRef<L.Map | null>(null);
+  const patientMarkerRef = useRef<L.Marker | null>(null);
+  const homeMarkerRef = useRef<L.Marker | null>(null);
+  const circleRef = useRef<L.Circle | null>(null);
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+
+  const makePatientIcon = (safe: boolean) =>
+    L.divIcon({
+      html: `<div style="background:${safe ? "#10b981" : "#ef4444"};width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,0.3);">
+               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="white" viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>
+             </div>`,
+      className: "",
+      iconAnchor: [14, 28],
+    });
+
+  const makeHomeIcon = () =>
+    L.divIcon({
+      html: `<div style="background:#1a6fb5;width:32px;height:32px;border-radius:10px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,0.3);">
+               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="white" viewBox="0 0 24 24"><path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z"/></svg>
+             </div>`,
+      className: "",
+      iconAnchor: [16, 16],
+    });
+
+  const geocodeAddress = async (address: string): Promise<{ lat: number; lng: number } | null> => {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`,
+      { headers: { "Accept-Language": "en" } }
+    );
+    const data = await res.json();
+    if (!data || data.length === 0) return null;
+    return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
   };
 
-  const simulate = (newStatus: ZoneStatus) => {
-    setStatus(newStatus);
-    if (newStatus === 'danger') onDanger()
-    const positions: Record<
-      ZoneStatus,
-      { x: number; y: number; address: string }
-    > = {
-      safe: { x: 52, y: 48, address: "Avenue Bourguiba, Bou Salem" },
-      danger: { x: 80, y: 28, address: "Route Nationale 5, Bou Salem" },
-    };
-    setLocation((prev) => ({
-      ...prev,
-      ...positions[newStatus],
+  const persistHomeAddress = async (address: string) => {
+    await updateMyLocation({ address }, token);
+  };
+
+  const persistCurrentPosition = async (latitude: number, longitude: number, address: string) => {
+    const updatedAt = new Date().toISOString();
+
+    setLocation({
+      lat: latitude,
+      lng: longitude,
+      address,
       updatedAt: new Date().toLocaleTimeString("en-US", {
         hour: "2-digit",
         minute: "2-digit",
       }),
-    }));
+    });
+    setLocationError(null);
+
+    await updateMyLocation(
+      {
+        currentPosition: {
+          lat: latitude,
+          lng: longitude,
+          address,
+          updatedAt,
+        },
+      },
+      token,
+    );
+  };
+
+  const handleAddressSubmit = async () => {
+    if (!homeAddressInput.trim()) return;
+    setAddressLoading(true);
+    setAddressError(null);
+
+    try {
+      const coords = await geocodeAddress(homeAddressInput);
+      if (!coords) {
+        setAddressError("Address not found. Please try a more specific address.");
+        return;
+      }
+
+      const normalizedAddress = homeAddressInput.trim();
+      setHomePosition(coords);
+      setHomeAddress(normalizedAddress);
+      setHomeAddressInput(normalizedAddress);
+      await persistHomeAddress(normalizedAddress);
+    } catch {
+      setAddressError("Could not save the home address. Please try again.");
+    } finally {
+      setAddressLoading(false);
+    }
+  };
+
+  const detectBrowserLocation = () => {
+    if (!navigator.geolocation) {
+      setLocationError("Geolocation is not supported by your browser.");
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        void persistCurrentPosition(latitude, longitude, "Current Location").catch(() => {
+          setLocationError("Could not save the current position.");
+        });
+      },
+      () => setLocationError("Could not detect location. Please allow location access."),
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
+  useEffect(() => {
+    if (!token) return;
+
+    let cancelled = false;
+
+    const loadSavedHomeAddress = async () => {
+      try {
+        const me = await fetchMe(token);
+        const savedAddress = me.patient?.address;
+        if (!savedAddress || cancelled) {
+          return;
+        }
+
+        setHomeAddress(savedAddress);
+        setHomeAddressInput(savedAddress);
+
+        const coords = await geocodeAddress(savedAddress);
+        if (coords && !cancelled) {
+          setHomePosition(coords);
+        }
+      } catch {
+        return;
+      }
+    };
+
+    void loadSavedHomeAddress();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  useEffect(() => {
+    detectBrowserLocation();
+  }, []);
+
+  // Check safe zone
+  useEffect(() => {
+    if (!homePosition || location.lat === 0) return;
+
+    const toRad = (val: number) => (val * Math.PI) / 180;
+    const R = 6371000;
+    const dLat = toRad(location.lat - homePosition.lat);
+    const dLng = toRad(location.lng - homePosition.lng);
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(toRad(homePosition.lat)) *
+        Math.cos(toRad(location.lat)) *
+        Math.sin(dLng / 2) ** 2;
+    const distance = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    const newStatus: ZoneStatus = distance <= SAFE_RADIUS_METERS ? "safe" : "danger";
+    setStatus(newStatus);
+    if (newStatus === "danger") onDanger();
+  }, [location, homePosition]);
+
+  // Initialize map
+  useEffect(() => {
+    if (!mapContainerRef.current || mapRef.current || !homePosition) return;
+
+    const center: [number, number] =
+      location.lat !== 0
+        ? [location.lat, location.lng]
+        : [homePosition.lat, homePosition.lng];
+
+    const map = L.map(mapContainerRef.current).setView(center, 15);
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: '© <a href="https://www.openstreetmap.org/">OpenStreetMap</a>',
+    }).addTo(map);
+
+    homeMarkerRef.current = L.marker(
+      [homePosition.lat, homePosition.lng],
+      { icon: makeHomeIcon() }
+    )
+      .addTo(map)
+      .bindPopup(`🏠 ${homeAddress}`);
+
+    circleRef.current = L.circle([homePosition.lat, homePosition.lng], {
+      radius: SAFE_RADIUS_METERS,
+      color: "#1a6fb5",
+      fillColor: "#1a6fb5",
+      fillOpacity: 0.08,
+      dashArray: "6 6",
+      weight: 2,
+    }).addTo(map);
+
+    patientMarkerRef.current = L.marker(
+      location.lat !== 0
+        ? [location.lat, location.lng]
+        : [homePosition.lat, homePosition.lng],
+      { icon: makePatientIcon(status === "safe") }
+    )
+      .addTo(map)
+      .bindPopup("👤 Patient");
+
+    mapRef.current = map;
+    setMapReady(true);
+
+    return () => {
+      map.remove();
+      mapRef.current = null;
+      setMapReady(false);
+    };
+  }, [homePosition]);
+
+  // Update home marker
+  useEffect(() => {
+    if (!mapRef.current || !homePosition || !mapReady) return;
+    homeMarkerRef.current?.setLatLng([homePosition.lat, homePosition.lng]);
+    circleRef.current?.setLatLng([homePosition.lat, homePosition.lng]);
+  }, [homePosition, mapReady]);
+
+  // Update patient marker and follow
+  useEffect(() => {
+    if (!patientMarkerRef.current || !mapRef.current || location.lat === 0) return;
+    patientMarkerRef.current.setLatLng([location.lat, location.lng]);
+    patientMarkerRef.current.setIcon(makePatientIcon(status === "safe"));
+    mapRef.current.panTo([location.lat, location.lng]);
+  }, [location, status]);
+
+  const refresh = () => {
+    setRefreshing(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords;
+        void persistCurrentPosition(latitude, longitude, "Current Location")
+          .catch(() => {
+            setLocationError("Could not save the current position.");
+          })
+          .finally(() => {
+            setRefreshing(false);
+          });
+      },
+      () => {
+        setRefreshing(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
+  const openInGoogleMaps = (lat: number, lng: number) => {
+    window.open(
+      `https://www.google.com/maps?q=${lat},${lng}`,
+      "_blank",
+      "noopener,noreferrer"
+    );
   };
 
   const { label, color, bg, border, icon: StatusIcon } = statusConfig[status];
@@ -104,15 +347,12 @@ export default function CaregiverLiveMap({ onDanger }: Props) {
   return (
     <div className="flex min-h-screen bg-[#f4f7fb]">
       <Sidebar />
-
       <main className="flex-1 p-6 overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-5">
           <div>
             <h1 className="text-xl font-bold text-gray-900">Live Map</h1>
-            <p className="text-xs text-gray-400">
-              Real-time GPS tracking — Margaret J. Thompson
-            </p>
+            <p className="text-xs text-gray-400">Real-time GPS tracking</p>
           </div>
           <button
             onClick={refresh}
@@ -126,210 +366,97 @@ export default function CaregiverLiveMap({ onDanger }: Props) {
           </button>
         </div>
 
+        {/* Home Address Input */}
+        {!homePosition && (
+          <div className="mb-5 bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+            <p className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+              <Home size={16} className="text-[#1a6fb5]" />
+              Enter the patient's home address
+            </p>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={homeAddressInput}
+                onChange={(e) => setHomeAddressInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleAddressSubmit()}
+                placeholder="e.g. Avenue Bourguiba, Tunis, Tunisia"
+                className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-700 outline-none focus:border-[#1a6fb5] transition"
+              />
+              <button
+                onClick={handleAddressSubmit}
+                disabled={addressLoading}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium text-white transition disabled:opacity-60"
+                style={{ background: "linear-gradient(135deg, #1a6fb5, #6366f1)" }}
+              >
+                <Search size={14} />
+                {addressLoading ? "Searching..." : "Set Home"}
+              </button>
+            </div>
+            {addressError && (
+              <p className="text-xs text-red-500 mt-2">{addressError}</p>
+            )}
+          </div>
+        )}
+
+        {/* Change address */}
+        {homePosition && (
+          <div className="mb-4 flex items-center gap-3">
+            <div className="flex items-center gap-2 text-xs text-gray-500 bg-white px-3 py-2 rounded-xl border border-gray-100 shadow-sm">
+              <Home size={13} className="text-[#1a6fb5]" />
+              <span className="font-medium text-gray-700">{homeAddress}</span>
+            </div>
+            <button
+              onClick={() => {
+                setHomePosition(null);
+                setHomeAddressInput("");
+                mapRef.current?.remove();
+                mapRef.current = null;
+              }}
+              className="text-xs text-[#1a6fb5] underline"
+            >
+              Change
+            </button>
+          </div>
+        )}
+
+        {locationError && (
+          <div className="mb-4 px-4 py-3 rounded-xl bg-red-50 border border-red-200 text-red-600 text-sm">
+            {locationError}
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
           {/* Map */}
           <div className="lg:col-span-2">
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-              {/* Map Controls */}
               <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
                 <div className="flex items-center gap-2">
                   <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                    <span className="text-xs text-gray-500 font-medium">
-                        Live · Updated {location.updatedAt}
-                    </span>
-                  </div>
-                <div className="flex gap-1">
-                  <button className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 transition">
-                    <ZoomIn size={15} />
-                  </button>
-                  <button className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 transition">
-                    <ZoomOut size={15} />
-                  </button>
+                  <span className="text-xs text-gray-500 font-medium">
+                    Live · Updated {location.updatedAt}
+                  </span>
                 </div>
               </div>
 
-              {/* Map Placeholder */}
-              <div
-                className="relative w-full overflow-hidden"
-                style={{ height: "420px", background: "#e8f0f7" }}
-              >
-                {/* Grid lines simulating map */}
-                <svg
-                  className="absolute inset-0 w-full h-full opacity-20"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <defs>
-                    <pattern
-                      id="grid"
-                      width="40"
-                      height="40"
-                      patternUnits="userSpaceOnUse"
-                    >
-                      <path
-                        d="M 40 0 L 0 0 0 40"
-                        fill="none"
-                        stroke="#1a6fb5"
-                        strokeWidth="0.5"
-                      />
-                    </pattern>
-                  </defs>
-                  <rect width="100%" height="100%" fill="url(#grid)" />
-                </svg>
-
-                {/* Simulated roads */}
-                <svg
-                  className="absolute inset-0 w-full h-full"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <line
-                    x1="0"
-                    y1="50%"
-                    x2="100%"
-                    y2="50%"
-                    stroke="#cbd5e1"
-                    strokeWidth="8"
-                  />
-                  <line
-                    x1="30%"
-                    y1="0"
-                    x2="30%"
-                    y2="100%"
-                    stroke="#cbd5e1"
-                    strokeWidth="5"
-                  />
-                  <line
-                    x1="70%"
-                    y1="0"
-                    x2="70%"
-                    y2="100%"
-                    stroke="#cbd5e1"
-                    strokeWidth="5"
-                  />
-                  <line
-                    x1="0"
-                    y1="25%"
-                    x2="100%"
-                    y2="25%"
-                    stroke="#e2e8f0"
-                    strokeWidth="3"
-                  />
-                  <line
-                    x1="0"
-                    y1="75%"
-                    x2="100%"
-                    y2="75%"
-                    stroke="#e2e8f0"
-                    strokeWidth="3"
-                  />
-
-                  {/* Road labels */}
-                  <text
-                    x="5"
-                    y="48%"
-                    fontSize="10"
-                    fill="#94a3b8"
-                    fontFamily="sans-serif"
-                  >
-                    Avenue Bourguiba
-                  </text>
-                  <text
-                    x="32%"
-                    y="15"
-                    fontSize="10"
-                    fill="#94a3b8"
-                    fontFamily="sans-serif"
-                  >
-                    Rue Principale
-                  </text>
-                  <text
-                    x="72%"
-                    y="15"
-                    fontSize="10"
-                    fill="#94a3b8"
-                    fontFamily="sans-serif"
-                  >
-                    Route Nationale
-                  </text>
-                </svg>
-
-                {/* Safe Zone Circle */}
+              {!homePosition ? (
                 <div
-                  className="absolute rounded-full border-2 border-dashed border-[#1a6fb5]/40 bg-[#1a6fb5]/8 transition-all duration-500"
-                  style={{
-                    width: "200px",
-                    height: "200px",
-                    left: "50%",
-                    top: "50%",
-                    transform: "translate(-50%, -50%)",
-                  }}
+                  className="flex items-center justify-center bg-gray-50"
+                  style={{ height: "420px" }}
+                >
+                  <div className="text-center">
+                    <MapPin size={32} className="text-gray-300 mx-auto mb-2" />
+                    <p className="text-sm text-gray-400">
+                      Enter the home address above to load the map
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  ref={mapContainerRef}
+                  style={{ height: "420px", width: "100%", zIndex: 0 }}
                 />
+              )}
 
-                {/* Home marker */}
-                <div
-                  className="absolute flex flex-col items-center"
-                  style={{
-                    left: "50%",
-                    top: "50%",
-                    transform: "translate(-50%, -50%)",
-                  }}
-                >
-                  <div className="w-8 h-8 rounded-xl bg-[#1a6fb5] flex items-center justify-center shadow-lg">
-                    <Home size={16} className="text-white" />
-                  </div>
-                  <span className="text-xs font-medium text-[#1a6fb5] mt-1 bg-white px-2 py-0.5 rounded-full shadow-sm">
-                    Home
-                  </span>
-                </div>
-
-                {/* Patient marker */}
-                <div
-                  className="absolute flex flex-col items-center transition-all duration-700"
-                  style={{
-                    left: `${location.x}%`,
-                    top: `${location.y}%`,
-                    transform: "translate(-50%, -100%)",
-                  }}
-                >
-                  {/* Pulse ring */}
-                  <div className="relative">
-                    <span
-                      className={`absolute inset-0 rounded-full animate-ping opacity-30 ${
-                        status === "safe"
-                          ? "bg-emerald-400"
-                        : "bg-red-500"
-                      }`}
-                      style={{
-                        width: "36px",
-                        height: "36px",
-                        top: "-4px",
-                        left: "-4px",
-                      }}
-                    />
-                    <div
-                      className={`w-7 h-7 rounded-full flex items-center justify-center shadow-lg ${
-                        status === "safe"
-                          ? "bg-emerald-500"
-                        : "bg-red-500"
-                      }`}
-                    >
-                      <MapPin size={14} className="text-white" />
-                    </div>
-                  </div>
-                  <span className="text-xs font-semibold text-gray-700 mt-1 bg-white px-2 py-0.5 rounded-full shadow-sm whitespace-nowrap">
-                    Margaret
-                  </span>
-                </div>
-
-                {/* Zone radius label */}
-                <div
-                  className="absolute text-xs text-[#1a6fb5]/60 font-medium"
-                  style={{ left: "72%", top: "30%" }}
-                >
-                  300m radius
-                </div>
-              </div>
-
-              {/* Map Legend */}
               <div className="flex items-center gap-5 px-4 py-3 border-t border-gray-100 bg-gray-50">
                 <div className="flex items-center gap-2 text-xs text-gray-500">
                   <div className="w-4 h-4 rounded-xl bg-[#1a6fb5] flex items-center justify-center">
@@ -339,11 +466,11 @@ export default function CaregiverLiveMap({ onDanger }: Props) {
                 </div>
                 <div className="flex items-center gap-2 text-xs text-gray-500">
                   <div className="w-3 h-3 rounded-full bg-emerald-500" />
-                  Patient (safe)
+                  Patient
                 </div>
                 <div className="flex items-center gap-2 text-xs text-gray-500">
                   <div className="w-10 h-0 border border-dashed border-[#1a6fb5]/40" />
-                  Safe Zone (300m)
+                  Safe Zone ({SAFE_RADIUS_METERS}m)
                 </div>
               </div>
             </div>
@@ -357,12 +484,10 @@ export default function CaregiverLiveMap({ onDanger }: Props) {
                 <StatusIcon size={18} className={color} />
                 <p className={`text-sm font-semibold ${color}`}>{label}</p>
               </div>
-              <p className="text-xs text-gray-500">
-                Last update: {location.updatedAt}
-              </p>
+              <p className="text-xs text-gray-500">Last update: {location.updatedAt}</p>
             </div>
 
-            {/* Location Details */}
+            {/* Current Location */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
                 Current Location
@@ -372,23 +497,25 @@ export default function CaregiverLiveMap({ onDanger }: Props) {
                   <MapPin size={16} className="text-[#1a6fb5]" />
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-gray-800">
-                    {location.address}
-                  </p>
+                  <p className="text-sm font-medium text-gray-800">{location.address}</p>
                   <p className="text-xs text-gray-400 mt-0.5">
-                    Bou Salem, Tunisia
+                    {location.lat !== 0
+                      ? `${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}`
+                      : "—"}
                   </p>
                 </div>
               </div>
+              {/* Open the current position in Google Maps */}
               <button
-                onClick={() => window.open("https://maps.google.com", "_blank")}
-                className="w-full mt-4 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium text-white transition"
-                style={{
-                  background: "linear-gradient(135deg, #1a6fb5, #6366f1)",
+                onClick={() => {
+                  if (location.lat === 0) return;
+                  openInGoogleMaps(location.lat, location.lng);
                 }}
+                className="w-full mt-4 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium text-white transition"
+                style={{ background: "linear-gradient(135deg, #1a6fb5, #6366f1)" }}
               >
                 <Navigation size={14} />
-                Get Directions
+                See location
               </button>
             </div>
 
@@ -403,40 +530,41 @@ export default function CaregiverLiveMap({ onDanger }: Props) {
                 </div>
                 <div>
                   <p className="text-sm font-medium text-gray-800">
-                    Avenue Bourguiba 8170
+                    {homeAddress || "Not set yet"}
                   </p>
                   <p className="text-xs text-gray-400 mt-0.5">
-                    Bou Salem, Tunisia
+                    {homePosition
+                      ? `${homePosition.lat.toFixed(5)}, ${homePosition.lng.toFixed(5)}`
+                      : "—"}
                   </p>
                 </div>
               </div>
             </div>
 
-            {/* Simulate — for demo */}
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                Simulate Position
-              </p>
-              <div className="flex flex-col gap-2">
-                {(["safe", "danger"] as ZoneStatus[]).map((s) => (
-                  <button
-                    key={s}
-                    onClick={() => simulate(s)}
-                    className={`py-2 rounded-xl text-xs font-medium capitalize transition border ${
-                      status === s
-                        ? s === "safe"
-                          ? "bg-emerald-500 text-white border-emerald-500"
-                          : "bg-red-500 text-white border-red-500"
-                        : "bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100"
-                    }`}
-                  >
-                    {s === "safe"
-                      ? "✓ Inside Zone"
-                        : "✕ Outside Zone"}
-                  </button>
-                ))}
+            {/* Danger Alert */}
+            {status === "danger" && (
+              <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <AlertTriangle size={16} className="text-red-500" />
+                  <p className="text-sm font-semibold text-red-600">Alert Triggered</p>
+                </div>
+                <p className="text-xs text-red-400">
+                  The patient has left the safe zone. Their current location is more than{" "}
+                  {SAFE_RADIUS_METERS}m from home.
+                </p>
+                <button
+                  onClick={() => {
+                    if (location.lat === 0) return;
+                    openInGoogleMaps(location.lat, location.lng);
+                  }}
+                  className="mt-3 inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium text-white"
+                  style={{ background: "linear-gradient(135deg, #ef4444, #f97316)" }}
+                >
+                  <Navigation size={12} />
+                  Open in Google Maps
+                </button>
               </div>
-            </div>
+            )}
           </div>
         </div>
       </main>

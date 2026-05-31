@@ -5,7 +5,7 @@ import StatsBar from '../../components/doctor/StatsBar'
 import PatientInbox, { type DoctorThread } from '../../components/doctor/PatientInbox'
 import MRIClassifier from '../../components/doctor/MRIClassifier'
 import { useAuth } from '../../context/useAuth'
-import { ApiError } from '../../lib/api'
+import { ApiError, apiRequestWithAuth } from '../../lib/api'
 
 type DoctorOverview = {
   doctor: {
@@ -53,21 +53,7 @@ export default function DoctorDashboard() {
     setLoading(true)
     setError('')
 
-    fetch(`${import.meta.env.VITE_API_URL?.replace(/\/$/, '') || 'http://localhost:3000'}/dashboard/doctor/overview`, {
-      method: 'GET',
-      headers: token
-        ? {
-            Authorization: `Bearer ${token}`,
-          }
-        : undefined,
-    })
-      .then(async (response) => {
-        const payload = await response.json()
-        if (!response.ok) {
-          throw new ApiError(payload?.message || response.statusText || 'Failed to load doctor dashboard', response.status, payload)
-        }
-        return payload as DoctorOverview
-      })
+    apiRequestWithAuth<DoctorOverview>('/dashboard/doctor/overview', { method: 'GET' }, token)
       .then((response) => setData(response))
       .catch((caughtError) => {
         const message = caughtError instanceof ApiError ? caughtError.message : 'Failed to load doctor dashboard'

@@ -1,4 +1,4 @@
-import { API_BASE_URL } from '../lib/api'
+import { API_BASE_URL, apiRequestWithAuth } from '../lib/api'
 
 export type NotificationType =
   | 'NEW_MESSAGE'
@@ -31,23 +31,7 @@ const request = async <T>(
   path: string,
   options?: RequestInit,
   token?: string | null,
-): Promise<T> => {
-  const res = await fetch(`${API_BASE_URL}${path}`, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options?.headers ?? {}),
-    },
-    ...options,
-  })
-
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(text || `Request failed with ${res.status}`)
-  }
-
-  return res.json() as Promise<T>
-}
+): Promise<T> => apiRequestWithAuth<T>(path, options, token)
 
 export const fetchNotifications = async (token: string | null) =>
   request<NotificationDto[]>('/notifications', undefined, token)

@@ -10,9 +10,11 @@ import { JwtService } from '@nestjs/jwt';
 import { CreateUserDto } from '../DTOs/createUserDto.js';
 import { CreatePatientDto } from '../DTOs/createPatientDto.js';
 import { CreateDoctorDto } from '../DTOs/createDoctorDto.js';
+import { UpdateUserLocationDto } from '../DTOs/updateUserLocationDto.js';
 import { MailService } from '../../mail/mail.service.js';
 import { UserRole } from '../../../generated/prisma/client.js';
 import { OnEvent } from '@nestjs/event-emitter';
+import { RedisService } from '../../auth/Services/redis.service.js';
 
 type CheckoutSession = any;
 
@@ -22,6 +24,7 @@ export class UserService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly mailService: MailService,
+    private readonly redisService: RedisService,
   ) {}
 
   async findAll() {
@@ -227,6 +230,44 @@ export class UserService {
         updatedAt: new Date(),
       },
     });
+  }
+
+  async updateMyLocation(userId: number, data: UpdateUserLocationDto) {
+    const currentUser = await this.prisma.user.findFirst({
+      where: { id: userId, deletedAt: null },
+      select: { id: true },
+    });
+
+    if (!currentUser) {
+      throw new NotFoundException(`User with id ${userId} not found.`);
+    }
+
+    if (data.address !== undefined) {
+      await this.prisma.patient.update({
+        where: { userId },
+        data: {
+          address: data.address?.trim() || null,
+        },
+      });
+    }
+
+    if (data.currentPosition) {
+      const timestamp = new Date().toISOString();
+      const key = `users:${userId}:current-location:${timestamp}`;
+      try {
+        await this.redisService.set(
+          key,
+          JSON.stringify({
+            ...data.currentPosition,
+            savedAt: timestamp,
+          }),
+        );
+      } catch (error) {
+        console.error('Failed to persist current location snapshot', error);
+      }
+    }
+
+    return this.findMe(userId);
   }
 
   async remove(id: number) {

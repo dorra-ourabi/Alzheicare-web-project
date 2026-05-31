@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   ParseIntPipe,
+  Patch,
   Post,
   Put,
   UseGuards,
@@ -18,6 +19,7 @@ import { CurrentUser } from '../../Decorators/currentUser.decorator.js';
 import { RolesGuard } from '../../auth/Guards/roles.guard.js';
 import { Roles } from '../../Decorators/roles.decorator.js';
 import { UserRole } from '../../../generated/prisma/client.js';
+import { UpdateUserLocationDto } from '../DTOs/updateUserLocationDto.js';
 
 @Controller('users')
 export class UserController {
@@ -38,6 +40,15 @@ export class UserController {
   @Get('me')
   getMe(@CurrentUser() user: any) {
     return this.userService.findMe(user.sub);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('me/location')
+  updateMyLocation(
+    @CurrentUser() user: any,
+    @Body() updateUserLocationDto: UpdateUserLocationDto,
+  ) {
+    return this.userService.updateMyLocation(user.sub, updateUserLocationDto);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)

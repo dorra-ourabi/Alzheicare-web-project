@@ -1,4 +1,4 @@
-import { API_BASE_URL, ApiError } from './api'
+import { ApiError, apiRequestWithAuth } from './api'
 
 type GraphQLResponse<T> = {
   data?: T
@@ -6,24 +6,22 @@ type GraphQLResponse<T> = {
 }
 
 export async function graphqlRequest<T>(query: string, variables: Record<string, unknown> = {}, token?: string) {
-  const response = await fetch(`${API_BASE_URL}/graphql`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  const payload = await apiRequestWithAuth<GraphQLResponse<T>>(
+    '/graphql',
+    {
+      method: 'POST',
+      body: JSON.stringify({ query, variables }),
     },
-    body: JSON.stringify({ query, variables }),
-  })
+    token,
+  )
 
-  const payload = (await response.json()) as GraphQLResponse<T>
-
-  if (!response.ok || payload.errors?.length) {
-    const message = payload.errors?.[0]?.message || response.statusText || 'GraphQL request failed'
-    throw new ApiError(message, response.status, payload)
+  if (payload.errors?.length) {
+    const message = payload.errors?.[0]?.message || 'GraphQL request failed'
+    throw new ApiError(message, 400, payload)
   }
 
   if (!payload.data) {
-    throw new ApiError('GraphQL response missing data', response.status, payload)
+    throw new ApiError('GraphQL response missing data', 400, payload)
   }
 
   return payload.data
