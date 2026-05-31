@@ -1,9 +1,16 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useAuth } from '../../context/useAuth'
 import Sidebar from '../../components/caregiver/Sidebar'
 import {
   Search, UserPlus, Mail, Check,
   Clock, Stethoscope, Send
 } from 'lucide-react'
+import {
+  searchDoctors,
+  sendDoctorInvitation,
+  sendExternalDoctorInvitation,
+  type DoctorSearchResult,
+} from '../../api/invitations'
 
 interface Doctor {
   id: number
@@ -14,48 +21,14 @@ interface Doctor {
   status: 'none' | 'pending' | 'connected'
 }
 
-const mockDoctors: Doctor[] = [
-  {
-    id: 1,
-    name: 'Dr. A. Moreau',
-    specialty: 'Neurologist',
-    hospital: 'Hôpital Charles Nicolle',
-    avatar: 'AM',
-    status: 'connected',
-  },
-  {
-    id: 2,
-    name: 'Dr. S. Benali',
-    specialty: 'Geriatrician',
-    hospital: 'Clinique Les Oliviers',
-    avatar: 'SB',
-    status: 'pending',
-  },
-  {
-    id: 3,
-    name: 'Dr. L. Trabelsi',
-    specialty: 'Psychiatrist',
-    hospital: 'Hôpital Razi',
-    avatar: 'LT',
-    status: 'none',
-  },
-  {
-    id: 4,
-    name: 'Dr. K. Mansour',
-    specialty: 'Neurologist',
-    hospital: 'Clinique Hannibal',
-    avatar: 'KM',
-    status: 'none',
-  },
-  {
-    id: 5,
-    name: 'Dr. R. Chaabane',
-    specialty: 'Geriatrician',
-    hospital: 'Hôpital La Rabta',
-    avatar: 'RC',
-    status: 'none',
-  },
-]
+const formatDoctor = (doctor: DoctorSearchResult): Doctor => ({
+  id: doctor.id,
+  name: `${doctor.firstName} ${doctor.secondName}`,
+  specialty: doctor.specialization,
+  hospital: doctor.licenceNumber,
+  avatar: `${doctor.firstName?.[0] ?? 'D'}${doctor.secondName?.[0] ?? 'D'}`,
+  status: 'none',
+})
 
 const statusConfig = {
   none: {
@@ -76,23 +49,78 @@ const statusConfig = {
 }
 
 export default function DoctorNetwork() {
-  const [doctors, setDoctors] = useState<Doctor[]>(mockDoctors)
+  const { accessToken: token } = useAuth()
+  const [doctors, setDoctors] = useState<Doctor[]>([])
   const [search, setSearch] = useState('')
   const [externalEmail, setExternalEmail] = useState('')
   const [inviteSent, setInviteSent] = useState(false)
+  const [inviteError, setInviteError] = useState<string | null>(null)
+  const [searchError, setSearchError] = useState<string | null>(null)
+  const [loadingDoctors, setLoadingDoctors] = useState(false)
   const [activeTab, setActiveTab] = useState<'search' | 'connected'>('search')
 
-  const sendRequest = (id: number) => {
+  useEffect(() => {
+    if (!token) return
+
+    let isMounted = true
+    setLoadingDoctors(true)
+    setSearchError(null)
+
+    searchDoctors(search, token)
+      .then((results) => {
+        if (!isMounted) return
+        setDoctors(results.map(formatDoctor))
+      })
+      .catch((err) => {
+        if (!isMounted) return
+        setSearchError(
+          err instanceof Error ? err.message : 'Could not load doctors.',
+        )
+      })
+      .finally(() => {
+        if (!isMounted) return
+        setLoadingDoctors(false)
+      })
+
+    return () => {
+      isMounted = false
+    }
+  }, [search, token])
+
+  const sendRequest = async (id: number) => {
+    if (!token) return
+
     setDoctors((prev) =>
-      prev.map((d) => d.id === id ? { ...d, status: 'pending' } : d)
+      prev.map((d) => (d.id === id ? { ...d, status: 'pending' } : d)),
     )
+
+    try {
+      await sendDoctorInvitation(id, token)
+    } catch (err) {
+      setDoctors((prev) =>
+        prev.map((d) => (d.id === id ? { ...d, status: 'none' } : d)),
+      )
+      setSearchError(
+        err instanceof Error ? err.message : 'Failed to send invitation.',
+      )
+    }
   }
 
-  const sendExternalInvite = () => {
-    if (!externalEmail.trim()) return
-    setInviteSent(true)
-    setExternalEmail('')
-    setTimeout(() => setInviteSent(false), 3000)
+  const sendExternalInvite = async () => {
+    if (!externalEmail.trim() || !token) return
+
+    setInviteError(null)
+
+    try {
+      await sendExternalDoctorInvitation(externalEmail.trim(), token)
+      setInviteSent(true)
+      setExternalEmail('')
+      window.setTimeout(() => setInviteSent(false), 3000)
+    } catch (err) {
+      setInviteError(
+        err instanceof Error ? err.message : 'Failed to send external invitation.',
+      )
+    }
   }
 
   const filtered = doctors.filter((d) =>
@@ -101,6 +129,19 @@ export default function DoctorNetwork() {
   )
 
   const connected = doctors.filter((d) => d.status === 'connected')
+
+  if (!token) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#f4f7fb] p-6">
+        <div className="max-w-md w-full bg-white rounded-3xl border border-gray-100 shadow-sm p-8 text-center">
+          <h1 className="text-lg font-semibold text-gray-900">Sign in to manage invitations</h1>
+          <p className="text-sm text-gray-500 mt-3">
+            Doctor invitations require an authenticated caregiver session.
+          </p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex min-h-screen bg-[#f4f7fb]">
@@ -154,49 +195,61 @@ export default function DoctorNetwork() {
 
             {/* Doctor Cards */}
             <div className="flex flex-col gap-3">
-              {(activeTab === 'search' ? filtered : connected).map((doctor) => {
-                const { label, icon: Icon, style } = statusConfig[doctor.status]
-                return (
-                  <div
-                    key={doctor.id}
-                    className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex items-center gap-4"
-                  >
-                    {/* Avatar */}
+              {searchError && (
+                <div className="rounded-2xl bg-rose-50 border border-rose-100 p-4 text-sm text-rose-700">
+                  {searchError}
+                </div>
+              )}
+
+              {loadingDoctors ? (
+                <div className="rounded-2xl bg-white border border-gray-100 shadow-sm p-6 text-center text-sm text-gray-500">
+                  Loading doctors...
+                </div>
+              ) : (
+                (activeTab === 'search' ? filtered : connected).map((doctor) => {
+                  const { label, icon: Icon, style } = statusConfig[doctor.status]
+                  return (
                     <div
-                      className="w-12 h-12 rounded-2xl flex items-center justify-center text-white text-sm font-bold shrink-0"
-                      style={{ background: 'linear-gradient(135deg, #1a6fb5, #6366f1)' }}
+                      key={doctor.id}
+                      className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex items-center gap-4"
                     >
-                      {doctor.avatar}
-                    </div>
-
-                    {/* Info */}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-gray-800">{doctor.name}</p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-xs text-[#1a6fb5] font-medium">
-                          {doctor.specialty}
-                        </span>
-                        <span className="text-gray-300">·</span>
-                        <span className="text-xs text-gray-400 truncate">
-                          {doctor.hospital}
-                        </span>
+                      {/* Avatar */}
+                      <div
+                        className="w-12 h-12 rounded-2xl flex items-center justify-center text-white text-sm font-bold shrink-0"
+                        style={{ background: 'linear-gradient(135deg, #1a6fb5, #6366f1)' }}
+                      >
+                        {doctor.avatar}
                       </div>
+
+                      {/* Info */}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-gray-800">{doctor.name}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-xs text-[#1a6fb5] font-medium">
+                            {doctor.specialty}
+                          </span>
+                          <span className="text-gray-300">·</span>
+                          <span className="text-xs text-gray-400 truncate">
+                            {doctor.hospital}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Action */}
+                      <button
+                        onClick={() => doctor.status === 'none' && void sendRequest(doctor.id)}
+                        disabled={doctor.status !== 'none'}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all shrink-0 ${style}`}
+                      >
+                        <Icon size={14} />
+                        {label}
+                      </button>
                     </div>
+                  )
+                })
+              )}
 
-                    {/* Action */}
-                    <button
-                      onClick={() => doctor.status === 'none' && sendRequest(doctor.id)}
-                      disabled={doctor.status !== 'none'}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all shrink-0 ${style}`}
-                    >
-                      <Icon size={14} />
-                      {label}
-                    </button>
-                  </div>
-                )
-              })}
-
-              {(activeTab === 'search' ? filtered : connected).length === 0 && (
+              {!loadingDoctors && (activeTab === 'search' ? filtered : connected).length === 0 && (
                 <div className="flex flex-col items-center justify-center py-16 text-center bg-white rounded-2xl border border-gray-100">
                   <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center mb-3">
                     <Stethoscope size={24} className="text-gray-300" />
@@ -236,7 +289,7 @@ export default function DoctorNetwork() {
                   className="w-full bg-gray-50 rounded-xl px-4 py-3 text-sm outline-none border border-gray-100 focus:ring-2 focus:ring-[#1a6fb5] transition"
                 />
                 <button
-                  onClick={sendExternalInvite}
+                  onClick={() => void sendExternalInvite()}
                   disabled={!externalEmail.trim()}
                   className="flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold text-white transition disabled:opacity-40"
                   style={{ background: 'linear-gradient(135deg, #1a6fb5, #6366f1)' }}
@@ -244,6 +297,12 @@ export default function DoctorNetwork() {
                   <Send size={14} />
                   Send Invitation
                 </button>
+
+                {inviteError && (
+                  <div className="rounded-2xl bg-rose-50 border border-rose-100 p-4 text-sm text-rose-700">
+                    {inviteError}
+                  </div>
+                )}
 
                 {inviteSent && (
                   <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-2.5">

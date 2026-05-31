@@ -1,3 +1,4 @@
+import { type ReactNode } from 'react'
 import { type LucideIcon } from 'lucide-react'
 
 interface NotificationItemProps {
@@ -10,10 +11,11 @@ interface NotificationItemProps {
   read: boolean
   onRead: () => void
   onDelete: () => void
+  actions?: ReactNode
 }
 
 export default function NotificationItem({
-  icon: Icon, iconBg, iconColor, title, description, time, read, onRead, onDelete
+  icon: Icon, iconBg, iconColor, title, description, time, read, onRead, onDelete, actions,
 }: NotificationItemProps) {
   return (
     <div
@@ -54,6 +56,10 @@ export default function NotificationItem({
 
       {!read && (
         <span className="w-2 h-2 rounded-full bg-[#1a6fb5] shrink-0 mt-1.5" />
+      )}
+
+      {actions && (
+        <div className="w-full mt-4">{actions}</div>
       )}
     </div>
   )

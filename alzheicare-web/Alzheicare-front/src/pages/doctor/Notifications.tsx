@@ -23,6 +23,7 @@ import {
   type NotificationStreamMessage,
   type NotificationType,
 } from "../../api/notifications";
+import { respondToInvitation, type InvitationStatus } from "../../api/invitations";
 
 type Filter = "all" | "unread" | NotificationType;
 
@@ -176,6 +177,8 @@ export default function DoctorNotifications() {
     [notifications],
   );
 
+  const [processingInvitation, setProcessingInvitation] = useState<number | null>(null);
+
   const markRead = async (id: number) => {
     if (!token) return;
     try {
@@ -197,6 +200,32 @@ export default function DoctorNotifications() {
       window.dispatchEvent(new Event("notifications:refresh"));
     } catch {
       // Ignore errors for now.
+    }
+  };
+
+  const respondToInvitationAction = async (
+    notification: NotificationDto,
+    status: InvitationStatus,
+  ) => {
+    if (!token || !notification.referenceId) return;
+
+    setProcessingInvitation(notification.id);
+    try {
+      await respondToInvitation(notification.referenceId, status, token);
+      setNotifications((prev) =>
+        prev.map((n) =>
+          n.id === notification.id
+            ? { ...n, isRead: true, body: `${n.body ?? ''} ${
+                status === 'ACCEPTED' ? 'You accepted the invitation.' : 'You rejected the invitation.'
+              }`.trim() }
+            : n,
+        ),
+      );
+      window.dispatchEvent(new Event("notifications:refresh"));
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setProcessingInvitation(null);
     }
   };
 
@@ -297,6 +326,26 @@ export default function DoctorNotifications() {
                   read={notif.isRead}
                   onRead={() => markRead(notif.id)}
                   onDelete={() => deleteNotif(notif.id)}
+                  actions={
+                    notif.type === "INVITATION_RECEIVED" && notif.referenceId ? (
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          disabled={processingInvitation === notif.id}
+                          onClick={() => void respondToInvitationAction(notif, "ACCEPTED")}
+                          className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700 transition disabled:opacity-50"
+                        >
+                          Accept
+                        </button>
+                        <button
+                          disabled={processingInvitation === notif.id}
+                          onClick={() => void respondToInvitationAction(notif, "REJECTED")}
+                          className="rounded-xl bg-rose-500 px-3 py-2 text-xs font-semibold text-white hover:bg-rose-600 transition disabled:opacity-50"
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    ) : null
+                  }
                 />
               );
             })}
