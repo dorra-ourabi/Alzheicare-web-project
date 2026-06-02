@@ -27,6 +27,14 @@ export interface NotificationStreamMessage {
   notification: NotificationDto
 }
 
+export interface GeofenceAlertPayload {
+  lat: number
+  lng: number
+  address?: string
+  homeAddress?: string
+  updatedAt?: string
+}
+
 const request = async <T>(
   path: string,
   options?: RequestInit,
@@ -47,6 +55,23 @@ export const markAllNotificationsRead = async (token: string | null) =>
 
 export const deleteNotification = async (id: number, token: string | null) =>
   request<{ deleted: boolean }>(`/notifications/${id}`, { method: 'DELETE' }, token)
+
+export const sendGeofenceAlert = async (
+  payload: GeofenceAlertPayload,
+  token: string | null,
+) =>
+  request<{ sent: boolean; mapsLink: string }>(
+    '/notifications/geofence-alert',
+    { method: 'POST', body: JSON.stringify(payload) },
+    token,
+  )
+
+export const acknowledgeGeofenceAlert = async (token: string | null) =>
+  request<{ suppressed: boolean; ttlSeconds: number }>(
+    '/notifications/geofence-alert/ack',
+    { method: 'POST' },
+    token,
+  )
 
 export const openNotificationsStream = (token: string) =>
   new EventSource(`${API_BASE_URL}/notifications/stream?token=${encodeURIComponent(token)}`)

@@ -3,6 +3,8 @@ import { MailerService } from '@nestjs-modules/mailer';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Observable, fromEvent, map } from 'rxjs';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { TelegramService } from '../telegram/telegram.service.js';
+import { RedisService } from '../auth/Services/redis.service.js';
 import type {
   CalendarEvent,
   Notification,
@@ -35,6 +37,8 @@ export class NotificationService {
     private mailerService: MailerService,
     private prisma: PrismaService,
     private eventEmitter: EventEmitter2,
+    private telegramService: TelegramService,
+    private redisService: RedisService,
   ) {}
 
   subscribe(userId: number): Observable<NotificationEvent> {
@@ -151,6 +155,80 @@ export class NotificationService {
       this.logger.error(`Failed to send reminder to ${userEmail}:`, error);
       throw error;
     }
+  }
+
+  async sendGeofenceAlert(
+    patientUserId: number,
+    payload: {
+      lat: number;
+      lng: number;
+      address?: string | null;
+      homeAddress?: string | null;
+      updatedAt?: string | null;
+    },
+  ) {
+    const patient = await this.prisma.user.findUnique({
+      where: { id: patientUserId },
+      include: { patient: true },
+    });
+
+    if (!patient || !patient.patient) {
+      throw new NotFoundException('Patient not found');
+    }
+
+    const patientPhone = patient.patient?.phoneNumber ?? null;
+    const homeAddress = payload.homeAddress ?? patient.patient?.address ?? null;
+    const positionLabel = payload.address || `${payload.lat}, ${payload.lng}`;
+    const mapsLink = `https://www.google.com/maps?q=${payload.lat},${payload.lng}`;
+
+    const message = [
+      'ALERTE ROUGE: le patient a quitte la zone de securite.',
+      `Derniere position: ${positionLabel}`,
+      `Carte: ${mapsLink}`,
+      homeAddress ? `Adresse domicile: ${homeAddress}` : 'Adresse domicile: inconnue',
+      patientPhone ? `Telephone patient: ${patientPhone}` : 'Telephone patient: inconnu',
+      payload.updatedAt ? `Heure: ${payload.updatedAt}` : null,
+    ]
+      .filter((line) => Boolean(line))
+      .join('\n');
+
+    // Find the caregiver (the user who created/owns this patient)
+    const caregiver = await this.prisma.user.findUnique({
+      where: { id: patient.patient.userId },
+    });
+
+    let sent = false;
+    if (caregiver?.telegramChatId) {
+      await this.telegramService.sendMessage(caregiver.telegramChatId, message);
+      sent = true;
+    } else {
+      this.logger.warn(
+        `No telegramChatId for caregiver ${caregiver?.id}. Geofence alert not sent.`,
+      );
+    }
+
+    // Send in-app notification to caregiver
+    await this.createNotification(
+      caregiver?.id || patientUserId,
+      'SYSTEM',
+      'Geofence alert',
+      `Last known location: ${positionLabel}`,
+      undefined,
+      'geofence',
+    );
+
+    return { sent, mapsLink };
+  }
+
+  async acknowledgeGeofenceAlert(userId: number) {
+    const ttlSeconds = Number(process.env.GEOFENCE_SUPPRESS_TTL_SECONDS) || 3600;
+    const suppressKey = this.geofenceSuppressKey(userId);
+    await this.redisService.set(suppressKey, '1', ttlSeconds);
+    return { suppressed: true, ttlSeconds };
+  }
+
+  private geofenceSuppressKey(userId: number) {
+    return `users:${userId}:geofence:suppressed`;
   }
 
   private toPayload(notification: Notification): NotificationPayload {

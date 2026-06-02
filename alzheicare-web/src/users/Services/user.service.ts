@@ -2,6 +2,7 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import * as bcrypt from 'bcrypt';
@@ -15,16 +16,20 @@ import { MailService } from '../../mail/mail.service.js';
 import { UserRole } from '../../../generated/prisma/client.js';
 import { OnEvent } from '@nestjs/event-emitter';
 import { RedisService } from '../../auth/Services/redis.service.js';
+import { NotificationService } from '../../notifications/notification.service.js';
 
 type CheckoutSession = any;
 
 @Injectable()
 export class UserService {
+  private readonly logger = new Logger('UserService');
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly mailService: MailService,
     private readonly redisService: RedisService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   async findAll() {
@@ -265,9 +270,134 @@ export class UserService {
       } catch (error) {
         console.error('Failed to persist current location snapshot', error);
       }
+
+      // Trigger geofence check
+      this.checkGeofence(userId, data.currentPosition, data.address).catch((err) => {
+        this.logger.error('Geofence check failed', err);
+      });
     }
 
     return this.findMe(userId);
+  }
+
+  private async checkGeofence(
+    userId: number,
+    currentPosition: { lat: number; lng: number },
+    address?: string | null,
+  ) {
+    const patient = await this.prisma.patient.findUnique({
+      where: { userId },
+      select: { address: true },
+    });
+
+    if (!patient) {
+      return; // Not a patient
+    }
+
+    const homeAddress = patient.address;
+    if (!homeAddress) {
+      return; // No home address set
+    }
+
+    // Check suppression state
+    const suppressKey = `users:${userId}:geofence:suppressed`;
+    const isSuppressed = await this.redisService.get(suppressKey);
+    if (isSuppressed) {
+      this.logger.log(`Geofence alert suppressed for user ${userId}`);
+      return;
+    }
+
+    // Check cooldown to prevent spam
+    const cooldownKey = `users:${userId}:geofence:cooldown`;
+    const inCooldown = await this.redisService.get(cooldownKey);
+    if (inCooldown) {
+      return;
+    }
+
+    // Geocode home address
+    const homeCoords = await this.resolveHomeCoordinates(homeAddress);
+    if (!homeCoords) {
+      return;
+    }
+
+    // Calculate distance
+    const distanceMeters = this.calculateDistanceMeters(
+      currentPosition.lat,
+      currentPosition.lng,
+      homeCoords.lat,
+      homeCoords.lng,
+    );
+
+    const safeRadius = Number(process.env.SAFE_RADIUS_METERS) || 300;
+    if (distanceMeters > safeRadius) {
+      // Outside safe zone - send alert to caregivers
+      try {
+        await this.notificationService.sendGeofenceAlert(userId, {
+          lat: currentPosition.lat,
+          lng: currentPosition.lng,
+          address,
+          homeAddress,
+          updatedAt: new Date().toISOString(),
+        });
+
+        // Set cooldown
+        const cooldownSeconds = Number(process.env.GEOFENCE_ALERT_COOLDOWN_SECONDS) || 300;
+        await this.redisService.set(cooldownKey, '1', cooldownSeconds);
+      } catch (error) {
+        this.logger.error('Failed to send geofence alert', error);
+      }
+    }
+  }
+
+  private async resolveHomeCoordinates(address: string): Promise<{ lat: number; lng: number } | null> {
+    const cacheKey = `geofence:coords:${address}`;
+    const cached = await this.redisService.get(cacheKey);
+    if (cached) {
+      try {
+        return JSON.parse(cached);
+      } catch (e) {
+        // Malformed cache, continue
+      }
+    }
+
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`,
+        { headers: { 'User-Agent': 'AlzheiCare/1.0' } },
+      );
+
+      const results = await response.json();
+      if (results.length === 0) {
+        this.logger.warn(`No geocoding results for address: ${address}`);
+        return null;
+      }
+
+      const coords = {
+        lat: parseFloat(results[0].lat),
+        lng: parseFloat(results[0].lon),
+      };
+
+      // Cache for 7 days
+      await this.redisService.set(cacheKey, JSON.stringify(coords), 604800);
+      return coords;
+    } catch (error) {
+      this.logger.error(`Geocoding failed for address: ${address}`, error);
+      return null;
+    }
+  }
+
+  private calculateDistanceMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
+    const R = 6371000; // Earth radius in meters
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLng = ((lng2 - lng1) * Math.PI) / 180;
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos((lat1 * Math.PI) / 180) *
+        Math.cos((lat2 * Math.PI) / 180) *
+        Math.sin(dLng / 2) *
+        Math.sin(dLng / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
   }
 
   async remove(id: number) {

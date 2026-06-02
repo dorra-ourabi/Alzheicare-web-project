@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Delete,
   Get,
@@ -6,6 +7,7 @@ import {
   Param,
   ParseIntPipe,
   Patch,
+  Post,
   Query,
   Req,
   Sse,
@@ -17,6 +19,7 @@ import { ConfigService } from '@nestjs/config';
 import { map, type Observable } from 'rxjs';
 import { JwtAuthGuard } from '../auth/Guards/jwt.guard.js';
 import { NotificationService } from './notification.service.js';
+import { GeofenceAlertDto } from './dto/geofence-alert.dto.js';
 
 @Controller('notifications')
 export class NotificationsController {
@@ -54,6 +57,23 @@ export class NotificationsController {
   @Delete(':id')
   delete(@Req() req: any, @Param('id', ParseIntPipe) id: number) {
     return this.notifications.delete(this.userIdFromRequest(req), id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('geofence-alert')
+  sendGeofenceAlert(@Req() req: any, @Body() payload: GeofenceAlertDto) {
+    return this.notifications.sendGeofenceAlert(
+      this.userIdFromRequest(req),
+      payload,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('geofence-alert/ack')
+  acknowledgeGeofenceAlert(@Req() req: any) {
+    return this.notifications.acknowledgeGeofenceAlert(
+      this.userIdFromRequest(req),
+    );
   }
 
   @Sse('stream')

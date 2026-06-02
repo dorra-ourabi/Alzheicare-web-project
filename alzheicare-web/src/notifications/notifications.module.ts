@@ -4,6 +4,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { MailModule } from '../mail/mail.module.js';
 import { TelegramModule } from '../telegram/telegram.module.js';
+import { AuthModule } from '../auth/auth.module.js';
 import { NotificationProcessor } from './notification.processor.js';
 import { NotificationSchedulerService } from './notification-scheduler.service.js';
 import { NotificationService } from './notification.service.js';
@@ -15,6 +16,7 @@ import { PrismaModule } from '../prisma/prisma.module.js';
   imports: [
     ConfigModule,
     PrismaModule,
+    AuthModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

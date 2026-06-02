@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { AlertTriangle, Map } from 'lucide-react'
 import Landing from './pages/Landing'
@@ -19,9 +19,75 @@ import CaregiverLiveMap from './pages/caregiver/LiveMap'
 import CaregiverGames from './pages/caregiver/CognitiveGames'
 import DoctorNetwork from './pages/caregiver/DoctorNetwork'
 import DoctorMRI from './pages/doctor/MRI'
+import { openNotificationsStream, acknowledgeGeofenceAlert } from './api/notifications'
+
+interface GeofenceNotification {
+  mapsLink?: string
+  message?: string
+}
 
 export default function App() {
   const [geofenceActive, setGeofenceActive] = useState(false)
+  const [geofenceDismissed, setGeofenceDismissed] = useState(false)
+  const [geofenceData, setGeofenceData] = useState<GeofenceNotification>({})
+  const [isAcknowledging, setIsAcknowledging] = useState(false)
+  const eventSourceRef = useRef<EventSource | null>(null)
+
+  useEffect(() => {
+    const token = localStorage.getItem('token')
+    if (!token) return
+
+    // Open SSE stream for notifications
+    const eventSource = openNotificationsStream(token)
+    eventSourceRef.current = eventSource
+
+    eventSource.addEventListener('message', (event) => {
+      try {
+        const data = JSON.parse(event.data)
+        if (data.notification?.referenceType === 'geofence') {
+          setGeofenceDismissed(false)
+          setGeofenceData({
+            message: data.notification.body,
+            mapsLink: data.notification.body?.includes('Carte:')
+              ? data.notification.body
+                  .split('Carte: ')[1]
+                  ?.split('\n')[0]
+                  ?.trim()
+              : undefined,
+          })
+          setGeofenceActive(true)
+        }
+      } catch (err) {
+        console.error('Failed to parse notification:', err)
+      }
+    })
+
+    eventSource.addEventListener('error', () => {
+      eventSource.close()
+      eventSourceRef.current = null
+    })
+
+    return () => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close()
+        eventSourceRef.current = null
+      }
+    }
+  }, [])
+
+  const handleAcknowledgeGeofence = async () => {
+    setIsAcknowledging(true)
+    try {
+      const token = localStorage.getItem('token')
+      await acknowledgeGeofenceAlert(token)
+      setGeofenceActive(false)
+      setGeofenceDismissed(true)
+    } catch (error) {
+      console.error('Failed to acknowledge geofence alert:', error)
+    } finally {
+      setIsAcknowledging(false)
+    }
+  }
 
   return (
     <BrowserRouter>
@@ -52,13 +118,23 @@ export default function App() {
             Patient left the safe zone
           </h1>
           <p className="text-white/60 text-sm mb-16">
-            Last known location: Rue de la République · {new Date().toLocaleTimeString()}
+            {geofenceData.message || 'Last known location: Rue de la République · ' + new Date().toLocaleTimeString()}
           </p>
 
           {/* Buttons */}
           <div className="flex gap-5">
             <button
-              onClick={() => setGeofenceActive(false)}
+              onClick={handleAcknowledgeGeofence}
+              disabled={isAcknowledging}
+              className="px-10 py-4 rounded-2xl font-semibold text-base text-red-600 bg-white hover:bg-green-100 transition shadow-2xl disabled:opacity-50"
+            >
+              {isAcknowledging ? 'Confirming...' : "I'm with him"}
+            </button>
+            <button
+              onClick={() => {
+                setGeofenceActive(false)
+                setGeofenceDismissed(true)
+              }}
               className="px-10 py-4 rounded-2xl font-semibold text-base text-white transition"
               style={{ background: 'rgba(255,255,255,0.15)', border: '1.5px solid rgba(255,255,255,0.3)' }}
               onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.25)')}
@@ -68,8 +144,11 @@ export default function App() {
             </button>
             <button
               onClick={() => {
-                setGeofenceActive(false)
-                window.open('https://maps.google.com', '_blank')
+                if (geofenceData.mapsLink) {
+                  window.open(geofenceData.mapsLink, '_blank')
+                } else {
+                  window.open('https://maps.google.com', '_blank')
+                }
               }}
               className="flex items-center gap-3 px-10 py-4 rounded-2xl font-semibold text-base text-red-600 bg-white hover:bg-red-50 transition shadow-2xl"
             >
@@ -91,12 +170,26 @@ export default function App() {
         <Route path="/caregiver/calendar" element={<CaregiverCalendar />} />
         <Route path="/doctor/calendar" element={<DoctorCalendar />} />
         <Route path="/doctor/notifications" element={<DoctorNotifications />} />
-        <Route path="/caregiver/notifications" element={<CaregiverNotifications onSimulate={() => setGeofenceActive(true)} />}/>
+        <Route
+          path="/caregiver/notifications"
+          element={<CaregiverNotifications onSimulate={() => setGeofenceActive(true)} />}
+        />
         <Route path="/auth/verify-email" element={<VerifyEmail />} />
         <Route path="/caregiver/ai" element={<AIAssistant role="caregiver" />} />
         <Route path="/doctor/ai" element={<AIAssistant role="doctor" />} />
         <Route path="/caregiver/chat" element={<CaregiverChat />} />
-        <Route path="/caregiver/map" element={<CaregiverLiveMap onDanger={() => setGeofenceActive(true)} />} />        <Route path="/caregiver/network" element={<DoctorNetwork />} />
+        <Route
+          path="/caregiver/map"
+          element={
+            <CaregiverLiveMap
+              onDanger={() => {
+                if (!geofenceDismissed) setGeofenceActive(true)
+              }}
+              onSafe={() => setGeofenceDismissed(false)}
+            />
+          }
+        />
+        <Route path="/caregiver/network" element={<DoctorNetwork />} />
         <Route path="/caregiver/games" element={<CaregiverGames/>} />
         <Route path="/doctor/mri" element={<DoctorMRI />} />
        </Routes>

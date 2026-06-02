@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../context/useAuth";
 import { fetchMe, updateMyLocation } from "../../api/users";
+import { sendGeofenceAlert } from "../../api/notifications";
 
 import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
 import markerIcon from "leaflet/dist/images/marker-icon.png";
@@ -63,9 +64,10 @@ const SAFE_RADIUS_METERS = 300;
 
 interface Props {
   onDanger: () => void;
+  onSafe: () => void;
 }
 
-export default function CaregiverLiveMap({ onDanger }: Props) {
+export default function CaregiverLiveMap({ onDanger, onSafe }: Props) {
   const { accessToken: token } = useAuth();
   const [status, setStatus] = useState<ZoneStatus>("safe");
   const [homePosition, setHomePosition] = useState<{ lat: number; lng: number } | null>(null);
@@ -92,6 +94,7 @@ export default function CaregiverLiveMap({ onDanger }: Props) {
   const homeMarkerRef = useRef<L.Marker | null>(null);
   const circleRef = useRef<L.Circle | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
+  const alertSentRef = useRef(false);
 
   const makePatientIcon = (safe: boolean) =>
     L.divIcon({
@@ -246,8 +249,26 @@ export default function CaregiverLiveMap({ onDanger }: Props) {
 
     const newStatus: ZoneStatus = distance <= SAFE_RADIUS_METERS ? "safe" : "danger";
     setStatus(newStatus);
-    if (newStatus === "danger") onDanger();
-  }, [location, homePosition]);
+    if (newStatus === "danger") {
+      onDanger();
+      if (!alertSentRef.current && token) {
+        alertSentRef.current = true;
+        void sendGeofenceAlert(
+          {
+            lat: location.lat,
+            lng: location.lng,
+            address: location.address,
+            homeAddress,
+            updatedAt: new Date().toISOString(),
+          },
+          token,
+        ).catch(() => {});
+      }
+    } else {
+      alertSentRef.current = false;
+      onSafe();
+    }
+  }, [location, homePosition, homeAddress, token, onDanger, onSafe]);
 
   // Initialize map
   useEffect(() => {

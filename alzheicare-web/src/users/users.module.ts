@@ -7,6 +7,7 @@ import { MailModule } from '../mail/mail.module.js';
 import { JwtAuthGuard } from '../auth/Guards/jwt.guard.js';
 import { RolesGuard } from '../auth/Guards/roles.guard.js';
 import { AuthModule } from '../auth/auth.module.js';
+import { NotificationsModule } from '../notifications/notifications.module.js';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { AuthModule } from '../auth/auth.module.js';
       signOptions: { expiresIn: '1h' },
     }),
     MailModule,
+    NotificationsModule,
   ],
   controllers: [UserController],
   providers: [UserService, JwtAuthGuard, RolesGuard],
