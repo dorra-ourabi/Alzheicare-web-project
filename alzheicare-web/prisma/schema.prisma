@@ -7,112 +7,91 @@ datasource db {
   provider = "postgresql"
 }
 
-enum UserRole {
-  Admin
-  Patient
-  Doctor
-}
-
 model User {
-  id                         Int       @id @default(autoincrement())
-  username                   String    @unique
-  firstName                  String
-  secondName                 String
-  email                      String    @unique
-  password                   String
-  role                       UserRole  @default(Patient)
-  emailVerificationToken     String?
-  emailVerificationExpiresAt DateTime?
-  isEmailVerified            Boolean   @default(false)
-  createdAt                  DateTime  @default(now())
-  deletedAt                  DateTime?
-  updatedAt                  DateTime  @updatedAt
-  doctor                     Doctor?
-  patient                    Patient?
-
-  sentMessages      ChatMessage[]
-  messages          Message[]
-  events            CalendarEvent[]
-  notifications     Notification[]
-  webhookEvents     WebhookEvent[]
-
-  telegramChatId   String? @unique
-  stripeCustomerId String? @unique
-  isPremium        Boolean @default(false)
-
+  id                             Int             @id @default(autoincrement())
+  username                       String          @unique
+  firstName                      String
+  secondName                     String
+  email                          String          @unique
+  password                       String
+  role                           UserRole        @default(Patient)
+  emailVerificationToken         String?
+  emailVerificationExpiresAt     DateTime?
+  isEmailVerified                Boolean         @default(false)
+  createdAt                      DateTime        @default(now())
+  deletedAt                      DateTime?
+  updatedAt                      DateTime        @updatedAt
   googleAccessToken              String?
-  googleRefreshToken             String?
+  googleCalendarChannelExpiresAt BigInt?
   googleCalendarChannelId        String?
   googleCalendarResourceId       String?
   googleCalendarSyncToken        String?
-  googleCalendarChannelExpiresAt BigInt?
+  googleRefreshToken             String?
+  isPremium                      Boolean         @default(false)
+  stripeCustomerId               String?         @unique
+  telegramChatId                 String?         @unique
+  events                         CalendarEvent[]
+  sentMessages                   ChatMessage[]
+  doctor                         Doctor?
+  messages                       Message[]
+  notifications                  Notification[]
+  patient                        Patient?
+  webhookEvents                  WebhookEvent[]
 }
 
 model Doctor {
-  id             Int     @id @default(autoincrement())
-  userId         Int     @unique
-  licenceNumber  String? @unique
+  id             Int            @id @default(autoincrement())
+  userId         Int            @unique
+  licenceNumber  String?        @unique
   specialization String?
-
-  user          User           @relation(fields: [userId], references: [id])
-  patients      Patient[]
-  invitations   Invitation[]
-  conversations Conversation[]
+  conversations  Conversation[]
+  user           User           @relation(fields: [userId], references: [id])
+  invitations    Invitation[]
+  patients       Patient[]
 }
 
 model Patient {
-  id                Int       @id @default(autoincrement())
-  userId            Int       @unique
+  id                Int              @id @default(autoincrement())
+  userId            Int              @unique
   doctorId          Int?
   dateOfBirth       DateTime?
   dateOfDiagnosis   DateTime?
   address           String?
   caregiversNumbers String?
   phoneNumber       String?
-
-  user              User              @relation(fields: [userId], references: [id])
-  doctor            Doctor?           @relation(fields: [doctorId], references: [id])
-  invitations       Invitation[]
-  conversations     Conversation[]
   chronicDiseases   ChronicDisease[]
+  conversations     Conversation[]
+  invitations       Invitation[]
   medications       Medication[]
+  doctor            Doctor?          @relation(fields: [doctorId], references: [id])
+  user              User             @relation(fields: [userId], references: [id])
   allergies         Allergy[]
+  behaviorEntries   BehaviorEntry[]
   dailyLogs         DailyLog[]
   moodEntries       MoodEntry[]
-  behaviorEntries   BehaviorEntry[]
-  weightRecords     WeightRecord[]
   sleepRecords      SleepRecord[]
-}
-
-enum ChronicDiseaseType {
-  Hypertension
-  Diabetes
-  HeartDisease
-  Stroke
-  Other
+  weightRecords     WeightRecord[]
 }
 
 model ChronicDisease {
-  id                Int                 @id @default(autoincrement())
+  id                Int                @id @default(autoincrement())
   patientId         Int
   diseaseType       ChronicDiseaseType
   diagnosisDate     DateTime
   notes             String?
   additionalDisease String?
-
-  patient Patient @relation(fields: [patientId], references: [id])
+  patient           Patient            @relation(fields: [patientId], references: [id])
 }
 
 model Medication {
-  id         Int      @id @default(autoincrement())
-  patientId  Int
-  name       String
-  dosage     String?
-  startDate  DateTime
-  endDate    DateTime?
-  notes      String?
-
-  patient Patient @relation(fields: [patientId], references: [id])
+  id        Int       @id @default(autoincrement())
+  patientId Int
+  name      String
+  dosage    String?
+  startDate DateTime
+  endDate   DateTime?
+  notes     String?
+  patient   Patient   @relation(fields: [patientId], references: [id])
 }
 
 model ChatMessage {
@@ -122,64 +101,46 @@ model ChatMessage {
   senderRole   String
   content      String
   createdAt    DateTime @default(now())
-
-  sender User @relation(fields: [senderId], references: [id])
-}
-
-enum CalendarCategory {
-  medicine
-  appointment
-  mundane
+  sender       User     @relation(fields: [senderId], references: [id])
 }
 
 model CalendarEvent {
-  id                String   @id @default(uuid())
-  title             String
-  description       String?
-  startTime         DateTime
-  endTime           DateTime
-  googleEventId     String?
-  seriesId          String?
-  notifyBefore      Int      @default(30)
-  category          CalendarCategory @default(appointment)
-  repeatDaily       Boolean  @default(false)
-  repeatUntil       DateTime?
-  notificationSent  Boolean  @default(false)
-
-  userId            Int
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id               String           @id @default(uuid())
+  title            String
+  description      String?
+  startTime        DateTime
+  endTime          DateTime
+  googleEventId    String?
+  seriesId         String?
+  notifyBefore     Int              @default(30)
+  category         CalendarCategory @default(appointment)
+  repeatDaily      Boolean          @default(false)
+  repeatUntil      DateTime?
+  notificationSent Boolean          @default(false)
+  userId           Int
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([startTime])
 }
 
-enum NotificationType {
-  NEW_MESSAGE
-  INVITATION_RECEIVED
-  INVITATION_ACCEPTED
-  INVITATION_REJECTED
-  CALENDAR_REMINDER
-  MEDICATION_DUE
-  SYSTEM
-}
-
 model Notification {
-  id            Int               @id @default(autoincrement())
+  id            Int              @id @default(autoincrement())
   userId        Int
   type          NotificationType
   title         String
   body          String?
-  isRead        Boolean           @default(false)
+  isRead        Boolean          @default(false)
   referenceId   Int?
   referenceType String?
-  createdAt     DateTime          @default(now())
+  createdAt     DateTime         @default(now())
   readAt        DateTime?
-
-  user          User              @relation(fields: [userId], references: [id])
+  user          User             @relation(fields: [userId], references: [id])
 
   @@index([userId])
   @@index([createdAt])
 }
+
 model Invitation {
   id          Int              @id @default(autoincrement())
   patientId   Int
@@ -192,15 +153,8 @@ model Invitation {
   respondedAt DateTime?
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
-
-  patient Patient @relation(fields: [patientId], references: [id])
-  doctor  Doctor? @relation(fields: [doctorId], references: [id])
-}
-
-enum InvitationStatus {
-  PENDING
-  ACCEPTED
-  REJECTED
+  doctor      Doctor?          @relation(fields: [doctorId], references: [id])
+  patient     Patient          @relation(fields: [patientId], references: [id])
 }
 
 model Conversation {
@@ -210,10 +164,9 @@ model Conversation {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   lastMessageAt DateTime?
-
-  patient  Patient   @relation(fields: [patientId], references: [id])
-  doctor   Doctor    @relation(fields: [doctorId], references: [id])
-  messages Message[]
+  doctor        Doctor    @relation(fields: [doctorId], references: [id])
+  patient       Patient   @relation(fields: [patientId], references: [id])
+  messages      Message[]
 
   @@unique([patientId, doctorId])
 }
@@ -227,32 +180,149 @@ model Message {
   readAt         DateTime?
   status         MessageStatus @default(SENT)
   attachmentUrl  String?
+  conversation   Conversation  @relation(fields: [conversationId], references: [id])
+  sender         User          @relation(fields: [senderId], references: [id])
+}
 
-  conversation Conversation @relation(fields: [conversationId], references: [id])
-  sender       User         @relation(fields: [senderId], references: [id])
+model WebhookEvent {
+  id            Int            @id @default(autoincrement())
+  userId        Int
+  channel       WebhookChannel
+  triggerType   WebhookTrigger
+  recipient     String
+  subject       String?
+  payload       Json
+  status        WebhookStatus  @default(PENDING)
+  attemptCount  Int            @default(0)
+  lastAttemptAt DateTime?
+  deliveredAt   DateTime?
+  errorMessage  String?
+  createdAt     DateTime       @default(now())
+  user          User           @relation(fields: [userId], references: [id])
+}
+
+model Allergy {
+  id        Int     @id @default(autoincrement())
+  patientId Int
+  name      String
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@map("allergies")
+}
+
+model DailyLog {
+  id              Int             @id @default(autoincrement())
+  patientId       Int
+  date            DateTime
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  behaviorEntries BehaviorEntry[]
+  patient         Patient         @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  moodEntry       MoodEntry?
+  sleepRecord     SleepRecord?
+  weightRecord    WeightRecord?
+
+  @@unique([patientId, date])
+  @@map("daily_logs")
+}
+
+model MoodEntry {
+  id         Int       @id @default(autoincrement())
+  patientId  Int
+  dailyLogId Int?      @unique
+  date       DateTime
+  mood       MoodLevel
+  notes      String?
+  recordedAt DateTime  @default(now())
+  dailyLog   DailyLog? @relation(fields: [dailyLogId], references: [id])
+  patient    Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@map("mood_entries")
+}
+
+model BehaviorEntry {
+  id         Int          @id @default(autoincrement())
+  patientId  Int
+  dailyLogId Int?
+  date       DateTime
+  behavior   BehaviorType
+  recordedAt DateTime     @default(now())
+  dailyLog   DailyLog?    @relation(fields: [dailyLogId], references: [id])
+  patient    Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@map("behavior_entries")
+}
+
+model WeightRecord {
+  id         Int       @id @default(autoincrement())
+  patientId  Int
+  dailyLogId Int?      @unique
+  date       DateTime
+  weightKg   Float
+  recordedAt DateTime  @default(now())
+  dailyLog   DailyLog? @relation(fields: [dailyLogId], references: [id])
+  patient    Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@map("weight_records")
+}
+
+model SleepRecord {
+  id         Int          @id @default(autoincrement())
+  patientId  Int
+  dailyLogId Int?         @unique
+  date       DateTime
+  hoursSlept Float
+  quality    SleepQuality
+  bedTime    String?
+  wakeTime   String?
+  notes      String?
+  recordedAt DateTime     @default(now())
+  dailyLog   DailyLog?    @relation(fields: [dailyLogId], references: [id])
+  patient    Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@map("sleep_records")
+}
+
+enum UserRole {
+  Admin
+  Patient
+  Doctor
+}
+
+enum ChronicDiseaseType {
+  Hypertension
+  Diabetes
+  HeartDisease
+  Stroke
+  Other
+}
+
+enum CalendarCategory {
+  medicine
+  appointment
+  mundane
+}
+
+enum NotificationType {
+  NEW_MESSAGE
+  INVITATION_RECEIVED
+  INVITATION_ACCEPTED
+  INVITATION_REJECTED
+  CALENDAR_REMINDER
+  MEDICATION_DUE
+  SYSTEM
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
 }
 
 enum MessageStatus {
   SENT
   DELIVERED
   READ
-}
-model WebhookEvent {
-  id           Int             @id @default(autoincrement())
-  userId       Int
-  channel      WebhookChannel
-  triggerType  WebhookTrigger
-  recipient    String
-  subject      String?
-  payload      Json
-  status       WebhookStatus   @default(PENDING)
-  attemptCount Int             @default(0)
-  lastAttemptAt DateTime?
-  deliveredAt  DateTime?
-  errorMessage String?
-  createdAt    DateTime        @default(now())
-
-  user         User            @relation(fields: [userId], references: [id])
 }
 
 enum WebhookChannel {
@@ -297,92 +367,4 @@ enum SleepQuality {
   Fair
   Good
   Excellent
-}
-
-model Allergy {
-  id        Int    @id @default(autoincrement())
-  patientId Int
-  name      String
-
-  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
-
-  @@map("allergies")
-}
-
-model DailyLog {
-  id        Int      @id @default(autoincrement())
-  patientId Int
-  date      DateTime
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  patient         Patient         @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  moodEntry       MoodEntry?
-  weightRecord    WeightRecord?
-  sleepRecord     SleepRecord?
-  behaviorEntries BehaviorEntry[]
-
-  @@unique([patientId, date])
-  @@map("daily_logs")
-}
-
-model MoodEntry {
-  id         Int       @id @default(autoincrement())
-  patientId  Int
-  dailyLogId Int?      @unique
-  date       DateTime
-  mood       MoodLevel
-  notes      String?
-  recordedAt DateTime  @default(now())
-
-  patient  Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  dailyLog DailyLog? @relation(fields: [dailyLogId], references: [id], onDelete: SetNull)
-
-  @@map("mood_entries")
-}
-
-model BehaviorEntry {
-  id         Int          @id @default(autoincrement())
-  patientId  Int
-  dailyLogId Int?
-  date       DateTime
-  behavior   BehaviorType
-  recordedAt DateTime     @default(now())
-
-  patient  Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  dailyLog DailyLog? @relation(fields: [dailyLogId], references: [id], onDelete: SetNull)
-
-  @@map("behavior_entries")
-}
-
-model WeightRecord {
-  id         Int      @id @default(autoincrement())
-  patientId  Int
-  dailyLogId Int?     @unique
-  date       DateTime
-  weightKg   Float
-  recordedAt DateTime @default(now())
-
-  patient  Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  dailyLog DailyLog? @relation(fields: [dailyLogId], references: [id], onDelete: SetNull)
-
-  @@map("weight_records")
-}
-
-model SleepRecord {
-  id         Int          @id @default(autoincrement())
-  patientId  Int
-  dailyLogId Int?         @unique
-  date       DateTime
-  hoursSlept Float
-  quality    SleepQuality
-  bedTime    String?
-  wakeTime   String?
-  notes      String?
-  recordedAt DateTime     @default(now())
-
-  patient  Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  dailyLog DailyLog? @relation(fields: [dailyLogId], references: [id], onDelete: SetNull)
-
-  @@map("sleep_records")
 }
