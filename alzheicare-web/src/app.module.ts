@@ -18,6 +18,7 @@ import { NotificationModule } from './notification/notification.module.js';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { StripeModule } from './stripe/stripe.module.js';
 import { AiAssistantModule } from './ai-assistant/ai-assistant.module.js';
+import { MlClassifierModule } from './ml-classifier/ml-classifier.module.js';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { AiAssistantModule } from './ai-assistant/ai-assistant.module.js';
     EventEmitterModule.forRoot(),
     StripeModule,
     AiAssistantModule,
+    MlClassifierModule,
   ],
   controllers: [AppController],
   providers: [AppService],

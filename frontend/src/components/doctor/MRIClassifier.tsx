@@ -1,39 +1,52 @@
 import { useState, useCallback } from 'react'
 import { Upload, Brain, AlertTriangle } from 'lucide-react'
+import { predictMri, type MriPredictionResult } from '../../api/ml-classifier'
+import { useAuth } from '../../context/AuthContext'
 
-type Stage = 'Early' | 'Moderate' | 'Severe' | null
-
-const stageConfig = {
-  Early: {
+const stageTone = {
+  'No Impairment': {
     color: 'text-green-600',
     bg: 'bg-green-50 border-green-200',
     bar: 'bg-green-500',
-    description: 'Mild memory lapses. Patient may still live independently with some support.',
   },
-  Moderate: {
+  'Very Mild Impairment': {
+    color: 'text-sky-600',
+    bg: 'bg-sky-50 border-sky-200',
+    bar: 'bg-sky-500',
+  },
+  'Mild Impairment': {
     color: 'text-yellow-600',
     bg: 'bg-yellow-50 border-yellow-200',
     bar: 'bg-yellow-400',
-    description: 'Increased memory loss and confusion. Daily assistance is recommended.',
   },
-  Severe: {
+  'Moderate Impairment': {
     color: 'text-red-600',
     bg: 'bg-red-50 border-red-200',
     bar: 'bg-red-500',
-    description: 'Advanced stage. Full-time care and medical supervision required.',
   },
+} as const
+
+const defaultTone = {
+  color: 'text-[#1a6fb5]',
+  bg: 'bg-[#1a6fb5]/5 border-[#1a6fb5]/20',
+  bar: 'bg-[#1a6fb5]',
 }
 
+const formatPercent = (value: number) => `${Math.round(value * 100)}%`
+
 export default function MRIClassifier() {
+  const { token } = useAuth()
   const [dragging, setDragging] = useState(false)
   const [file, setFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState<{ stage: Stage; confidence: number } | null>(null)
+  const [result, setResult] = useState<MriPredictionResult | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   const handleFile = (f: File) => {
     setFile(f)
     setResult(null)
+    setError(null)
     const reader = new FileReader()
     reader.onload = () => setPreview(reader.result as string)
     reader.readAsDataURL(f)
@@ -46,17 +59,27 @@ export default function MRIClassifier() {
     if (f) handleFile(f)
   }, [])
 
-  const classify = () => {
+  const classify = async () => {
     if (!file) return
+
     setLoading(true)
-    setTimeout(() => {
-      const stages: Stage[] = ['Early', 'Moderate', 'Severe']
-      const stage = stages[Math.floor(Math.random() * stages.length)]
-      const confidence = Math.floor(Math.random() * 15) + 82
-      setResult({ stage, confidence })
+    setResult(null)
+    setError(null)
+
+    try {
+      const data = await predictMri(file, token)
+      setResult(data)
+    } catch (err) {
+      console.error('Classification failed:', err)
+      setError(err instanceof Error ? err.message : 'Classification failed')
+    } finally {
       setLoading(false)
-    }, 2000)
+    }
   }
+
+  const tone = result
+    ? stageTone[result.predicted_stage as keyof typeof stageTone] ?? defaultTone
+    : defaultTone
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
@@ -130,37 +153,57 @@ export default function MRIClassifier() {
 
         {/* Result */}
         <div className="flex flex-col justify-center">
-          {result && result.stage ? (
-            <div className={`rounded-2xl border-2 p-5 ${stageConfig[result.stage].bg}`}>
-              <div className="flex items-center justify-between mb-4">
+          {result ? (
+            <div className={`rounded-2xl border-2 p-5 ${tone.bg}`}>
+              <div className="flex items-center justify-between gap-4 mb-4">
                 <p className="text-sm font-medium text-gray-500">Detected Stage</p>
-                <span className={`text-2xl font-bold ${stageConfig[result.stage].color}`}>
-                  {result.stage}
+                <span className={`text-2xl font-bold text-right ${tone.color}`}>
+                  {result.predicted_stage}
                 </span>
               </div>
 
               <div className="mb-4">
                 <div className="flex justify-between text-xs text-gray-500 mb-1">
                   <span>Confidence</span>
-                  <span className="font-semibold">{result.confidence}%</span>
+                  <span className="font-semibold">{formatPercent(result.confidence)}</span>
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-2">
                   <div
-                    className={`h-2 rounded-full transition-all duration-700 ${stageConfig[result.stage].bar}`}
-                    style={{ width: `${result.confidence}%` }}
+                    className={`h-2 rounded-full transition-all duration-700 ${tone.bar}`}
+                    style={{ width: formatPercent(result.confidence) }}
                   />
                 </div>
               </div>
 
-              <p className="text-xs text-gray-500 leading-relaxed">
-                {stageConfig[result.stage].description}
-              </p>
+              <div className="space-y-3 mb-4">
+                {Object.entries(result.probabilities).map(([label, probability]) => (
+                  <div key={label}>
+                    <div className="flex justify-between gap-3 text-xs text-gray-500 mb-1">
+                      <span>{label}</span>
+                      <span className="font-semibold">{formatPercent(probability)}</span>
+                    </div>
+                    <div className="w-full bg-white/70 rounded-full h-2">
+                      <div
+                        className="h-2 rounded-full bg-[#1a6fb5] transition-all duration-700"
+                        style={{ width: formatPercent(probability) }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <p className="text-xs text-gray-500 leading-relaxed">{result.clinical_note}</p>
 
               <div className="flex items-start gap-2 mt-4 bg-white/60 rounded-xl p-3">
                 <AlertTriangle size={14} className="text-amber-500 shrink-0 mt-0.5" />
-                <p className="text-xs text-gray-500">
-                  For clinical support only. Image is not saved or linked to any patient profile.
-                </p>
+                <p className="text-[11px] text-gray-500">{result.disclaimer}</p>
+              </div>
+            </div>
+          ) : error ? (
+            <div className="rounded-2xl border-2 border-red-200 bg-red-50 p-5">
+              <div className="flex items-start gap-2">
+                <AlertTriangle size={16} className="text-red-500 shrink-0 mt-0.5" />
+                <p className="text-sm text-red-600">{error}</p>
               </div>
             </div>
           ) : (

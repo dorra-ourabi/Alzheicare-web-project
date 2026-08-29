@@ -1,0 +1,9 @@
+venv_mri/
+venv/
+__pycache__/
+*.pyc
+data/
+weights_only.weights.h5
+confusion_matrix.png
+*.h5
+.env
